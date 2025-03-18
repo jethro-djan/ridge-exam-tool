@@ -1,24 +1,10 @@
-use ridge_exam_tool::models;
-use ridge_exam_tool::styles;
-use iced::widget::{
-    Column, button, row, text, container, column, Button,
-    svg, 
-};
-use iced::{
-    Element, Fill, Center, Theme, Border, Background, border,
-    Color, window, Task,
-};
+use iced::{Element, Length};
 
 fn main() -> iced::Result {
     iced::run("Ridge Examination Tool", update, view)
 }
 
-#[derive(Default)]
-struct RidgeExamTool {
-    state: Model,
-}
-
-enum Model {
+pub enum Model {
     WelcomeInterface(welcome::Welcome),
     InvigilatorTTInterface(invigilator_tt::InvigilatorTT),
     ExamTTInterface(exam_tt::ExamTT),
@@ -28,8 +14,8 @@ enum Model {
 impl Default for Model {
     fn default() -> Self { Model::WelcomeInterface(welcome::Welcome) }
 }
-#[derive(Debug)]
-enum Message {
+#[derive(Debug, Clone)]
+pub enum Message {
     GoToWelcomeMsg(welcome::Message),
     GoToInvigilatorTTMsg(invigilator_tt::Message),
     GoToExamTTMsg(exam_tt::Message),
@@ -37,16 +23,17 @@ enum Message {
 }
 
 mod welcome {
-    use ridge_exam_tool::models;
-    use ridge_exam_tool::styles;
+    use ridge_exam_tool::domain;
+    use ridge_exam_tool::widgets::welcome_button;
     use iced::widget::{
         Column, button, row, text, container, column, Button,
         svg, 
     };
     use iced::{
         Element, Fill, Center, Theme, Border, Background, border,
-        Color, window, Task,
+        Color, window, Task, Length,
     };
+    use super::Message as MainMessage;
     
     #[derive(Default)]
     pub struct Welcome;
@@ -56,51 +43,13 @@ mod welcome {
             let exam_tt_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/proctor-schedule.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let exam_tt_icon = column![
-                exam_tt_svg,
-                "Create Invigilation Timetable"
-            ]
-            .align_x(Center);
             let invigilation_tt_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/exam-schedule.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let invigilation_tt_icon = column![
-                invigilation_tt_svg,
-                "Create Examination Timetable"
-            ]
-            .align_x(Center);
             let exam_analysis_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/exam-analysis.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let exam_analysis_icon = column![
-                exam_analysis_svg,
-                "Perform Examination Analysis"
-            ]
-            .align_x(Center);
-            let create_invigilation_tt = 
-                button(invigilation_tt_icon)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .width(250)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage));
-            let create_exam_tt = 
-                Button::new(exam_tt_icon)
-                .width(250)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage::OpenExamTTInterface));
-            let perform_exam_analysis = 
-                button(exam_analysis_icon)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .width(250)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage::OpenExamAnalysisInterface));
+
             let welcome_text = text!("Welcome!");
             let welcome_label: Element<_> = Column::new()
                 .push(welcome_text.size(30))
@@ -108,10 +57,28 @@ mod welcome {
                 .align_x(Center)
                 .into();
 
+            let invigilator_tt_btn = 
+                welcome_button(
+                    invigilation_tt_svg, 
+                    "Create Invigilation Timetable"
+                )
+                .on_press(Message::GoToInvigilatorTTMsg);
+            let exam_tt_btn = 
+                welcome_button(
+                    exam_tt_svg, 
+                    "Create Examination Timetable"
+                )
+                .on_press(Message::GoToExamTTMsg);
+            let exam_analysis_btn = 
+                welcome_button(
+                    exam_analysis_svg, 
+                    "Perform Examination Analysis"
+                )
+                .on_press(Message::GoToExamAnalysisMsg);
             let btn_row = row![
-                create_invigilation_tt, 
-                create_exam_tt, 
-                perform_exam_analysis,
+                invigilator_tt_btn,
+                exam_tt_btn,
+                exam_analysis_btn,
             ]
             .spacing(40);
 
@@ -134,13 +101,16 @@ mod welcome {
 
     #[derive(Debug, Clone)]
     pub enum Message {
+        GoToInvigilatorTTMsg,
+        GoToExamTTMsg,
+        GoToExamAnalysisMsg,
     }
 
 }
 
 mod invigilator_tt {
-    use ridge_exam_tool::models;
-    use ridge_exam_tool::styles;
+    use ridge_exam_tool::domain;
+    use ridge_exam_tool::widgets::welcome_button;
     use iced::widget::{
         Column, button, row, text, container, column, Button,
         svg, 
@@ -157,51 +127,13 @@ mod invigilator_tt {
             let exam_tt_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/proctor-schedule.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let exam_tt_icon = column![
-                exam_tt_svg,
-                "Create Invigilation Timetable"
-            ]
-            .align_x(Center);
             let invigilation_tt_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/exam-schedule.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let invigilation_tt_icon = column![
-                invigilation_tt_svg,
-                "Create Examination Timetable"
-            ]
-            .align_x(Center);
             let exam_analysis_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/exam-analysis.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let exam_analysis_icon = column![
-                exam_analysis_svg,
-                "Perform Examination Analysis"
-            ]
-            .align_x(Center);
-            let create_invigilation_tt = 
-                button(invigilation_tt_icon)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .width(250)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage));
-            let create_exam_tt = 
-                Button::new(exam_tt_icon)
-                .width(250)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage::OpenExamTTInterface));
-            let perform_exam_analysis = 
-                button(exam_analysis_icon)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .width(250)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage::OpenExamAnalysisInterface));
+
             let welcome_text = text!("Welcome!");
             let welcome_label: Element<_> = Column::new()
                 .push(welcome_text.size(30))
@@ -210,9 +142,9 @@ mod invigilator_tt {
                 .into();
 
             let btn_row = row![
-                create_invigilation_tt, 
-                create_exam_tt, 
-                perform_exam_analysis,
+                welcome_button(invigilation_tt_svg, "Create Invigilation Timetable"),
+                welcome_button(exam_tt_svg, "Create Examination Timetable"),
+                welcome_button(exam_analysis_svg, "Perform Examination Analysis"),
             ]
             .spacing(40);
 
@@ -229,19 +161,19 @@ mod invigilator_tt {
                 .center_x(Fill)
                 .center_y(Fill)
                 .into()
-
         }
     }
 
     #[derive(Debug, Clone)]
     pub enum Message {
+        CreateInvigilatorList,
     }
 
 }
 
 mod exam_tt {
-    use ridge_exam_tool::models;
-    use ridge_exam_tool::styles;
+    use ridge_exam_tool::domain;
+    use ridge_exam_tool::widgets::welcome_button;
     use iced::widget::{
         Column, button, row, text, container, column, Button,
         svg, 
@@ -258,51 +190,13 @@ mod exam_tt {
             let exam_tt_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/proctor-schedule.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let exam_tt_icon = column![
-                exam_tt_svg,
-                "Create Invigilation Timetable"
-            ]
-            .align_x(Center);
             let invigilation_tt_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/exam-schedule.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let invigilation_tt_icon = column![
-                invigilation_tt_svg,
-                "Create Examination Timetable"
-            ]
-            .align_x(Center);
             let exam_analysis_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/exam-analysis.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let exam_analysis_icon = column![
-                exam_analysis_svg,
-                "Perform Examination Analysis"
-            ]
-            .align_x(Center);
-            let create_invigilation_tt = 
-                button(invigilation_tt_icon)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .width(250)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage));
-            let create_exam_tt = 
-                Button::new(exam_tt_icon)
-                .width(250)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage::OpenExamTTInterface));
-            let perform_exam_analysis = 
-                button(exam_analysis_icon)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .width(250)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage::OpenExamAnalysisInterface));
+
             let welcome_text = text!("Welcome!");
             let welcome_label: Element<_> = Column::new()
                 .push(welcome_text.size(30))
@@ -311,9 +205,9 @@ mod exam_tt {
                 .into();
 
             let btn_row = row![
-                create_invigilation_tt, 
-                create_exam_tt, 
-                perform_exam_analysis,
+                welcome_button(invigilation_tt_svg, "Create Invigilation Timetable"),
+                welcome_button(exam_tt_svg, "Create Examination Timetable"),
+                welcome_button(exam_analysis_svg, "Perform Examination Analysis"),
             ]
             .spacing(40);
 
@@ -336,6 +230,7 @@ mod exam_tt {
 
     #[derive(Debug, Clone)]
     pub enum Message {
+        CreateStudentCombination,
     }
 
 
@@ -343,8 +238,8 @@ mod exam_tt {
 }
 
 mod exam_analysis {
-    use ridge_exam_tool::models;
-    use ridge_exam_tool::styles;
+    use ridge_exam_tool::domain;
+    use ridge_exam_tool::widgets::welcome_button;
     use iced::widget::{
         Column, button, row, text, container, column, Button,
         svg, 
@@ -362,51 +257,13 @@ mod exam_analysis {
             let exam_tt_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/proctor-schedule.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let exam_tt_icon = column![
-                exam_tt_svg,
-                "Create Invigilation Timetable"
-            ]
-            .align_x(Center);
             let invigilation_tt_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/exam-schedule.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let invigilation_tt_icon = column![
-                invigilation_tt_svg,
-                "Create Examination Timetable"
-            ]
-            .align_x(Center);
             let exam_analysis_svg = 
                 svg(svg::Handle::from_path(format!("{}/assets/exam-analysis.svg", env!("CARGO_MANIFEST_DIR"))))
                 .height(60);
-            let exam_analysis_icon = column![
-                exam_analysis_svg,
-                "Perform Examination Analysis"
-            ]
-            .align_x(Center);
-            let create_invigilation_tt = 
-                button(invigilation_tt_icon)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .width(250)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage));
-            let create_exam_tt = 
-                Button::new(exam_tt_icon)
-                .width(250)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage::OpenExamTTInterface));
-            let perform_exam_analysis = 
-                button(exam_analysis_icon)
-                .padding(styles::WelcomeButtonStyle::PADDING)
-                .width(250)
-                .style(|theme: &Theme, status| {
-                    styles::WelcomeButtonStyle::style(theme, status)
-                });
-                // .on_press(RidgeExamToolMessage::OpenWelcomeInterface(MainMessage::OpenExamAnalysisInterface));
+
             let welcome_text = text!("Welcome!");
             let welcome_label: Element<_> = Column::new()
                 .push(welcome_text.size(30))
@@ -415,9 +272,9 @@ mod exam_analysis {
                 .into();
 
             let btn_row = row![
-                create_invigilation_tt, 
-                create_exam_tt, 
-                perform_exam_analysis,
+                welcome_button(invigilation_tt_svg, "Create Invigilation Timetable"),
+                welcome_button(exam_tt_svg, "Create Examination Timetable"),
+                welcome_button(exam_analysis_svg, "Perform Examination Analysis"),
             ]
             .spacing(40);
 
@@ -440,11 +297,12 @@ mod exam_analysis {
 
     #[derive(Debug, Clone)]
     pub enum Message {
+        SaveStudentPerformanceSummary,
     }
 
 }
 
-fn update(state: &mut RidgeExamTool, message: Message) {
+fn update(state: &mut Model, message: Message) {
     match message {
         Message::GoToWelcomeMsg(_) => {
             todo!();
@@ -461,8 +319,8 @@ fn update(state: &mut RidgeExamTool, message: Message) {
     }
 }
 
-pub fn view(state: &RidgeExamTool) -> Element<'_, Message> {
-    match &state.state {
+pub fn view(state: &Model) -> Element<'_, Message> {
+    match &state {
         Model::WelcomeInterface(welcome) => welcome.view().map(Message::GoToWelcomeMsg),
         Model::InvigilatorTTInterface(invigilator_tt) => invigilator_tt.view().map(Message::GoToInvigilatorTTMsg),
         Model::ExamTTInterface(exam_tt) => exam_tt.view().map(Message::GoToExamTTMsg),

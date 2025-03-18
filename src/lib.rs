@@ -1,2 +1,2 @@
-pub mod models;
-pub mod styles;
+pub mod domain;
+pub mod widgets;
