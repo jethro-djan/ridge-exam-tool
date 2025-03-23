@@ -6,6 +6,16 @@ struct PersonalName {
     last_name: String,
 }
 
+struct Teacher {
+    teacher: TeacherPersonalInfo,
+    subjects_taught: Vec<Subject>,
+}
+
+struct TeacherPersonalInfo {
+    name: PersonalName,
+    gender: Gender,
+}
+
 pub struct Invigilator {
     name: PersonalName,
     level: StudentClass,
@@ -19,6 +29,7 @@ struct ExamDate {
 struct Student {
     student: StudentPersonalInfo,
     class: StudentClass,
+    subjects_read: Vec<Subject>,
 }
 
 struct StudentPersonalInfo {
@@ -69,7 +80,6 @@ pub struct StudentPerformanceSummary {
     worst_subject: Subject,
     subject_specific_details: Vec<SubjectSpecificSummary>,
 }
-
 
 pub struct ClassPerformanceSummary {
     class: StudentClass,
