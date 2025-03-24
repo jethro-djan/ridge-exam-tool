@@ -17,9 +17,9 @@ struct RidgeExamTool {
 enum Screen {
     LoginInterface(login::Login),
     SummaryboardInterface(summaryboard::Summaryboard),
-    InvigilatorTTInterface(invigilator_tt::InvigilatorTT),
-    ExamTTInterface(exam_tt::ExamTT),
-    ExamAnalysisInterface(exam_analysis::ExamAnalysis),
+    // InvigilatorTTInterface(invigilator_tt::InvigilatorTT),
+    // ExamTTInterface(exam_tt::ExamTT),
+    // ExamAnalysisInterface(exam_analysis::ExamAnalysis),
 }
 
 impl Default for Screen {
@@ -35,9 +35,9 @@ impl Default for Screen {
 enum Message {
     GoToLoginInterface(login::Message),
     GoToSummaryboardInterface(summaryboard::Message),
-    GoToInvigilatorTTInterface(invigilator_tt::Message),
-    GoToExamTTInterface(exam_tt::Message),
-    GoToExamAnalysisInterface(exam_analysis::Message),
+    // GoToInvigilatorTTInterface(invigilator_tt::Message),
+    // GoToExamTTInterface(exam_tt::Message),
+    // GoToExamAnalysisInterface(exam_analysis::Message),
 }
 
 
@@ -51,10 +51,6 @@ impl RidgeExamTool {
                 })
             },
             Task::none()
-            // Message::GoToLoginInterface(Login { 
-            //     username: String::new(), 
-            //     password: String::new() 
-            // })
         )
     }
 
@@ -74,9 +70,9 @@ impl RidgeExamTool {
                 }
                 summaryboard::Message::ExamAnalysisButtonPressed => Task::none(),
             },
-            Message::GoToInvigilatorTTInterface(message) => Task::none(),
-            Message::GoToExamTTInterface(message) => Task::none(),
-            Message::GoToExamAnalysisInterface(message) => Task::none(),
+            // Message::GoToInvigilatorTTInterface(message) => Task::none(),
+            // Message::GoToExamTTInterface(message) => Task::none(),
+            // Message::GoToExamAnalysisInterface(message) => Task::none(),
         }
     }
 
@@ -85,35 +81,71 @@ impl RidgeExamTool {
             Screen::LoginInterface(login) => login.view().map(Message::GoToLoginInterface),
             Screen::SummaryboardInterface(summaryboard) => 
                 summaryboard.view().map(Message::GoToSummaryboardInterface),
-            Screen::InvigilatorTTInterface(invigilator_tt) => 
-                invigilator_tt.view().map(Message::GoToInvigilatorTTInterface),
-            Screen::ExamTTInterface(exam_tt) => exam_tt.view().map(Message::GoToExamTTInterface),
-            Screen::ExamAnalysisInterface(exam_analysis) =>
-                exam_analysis.view().map(Message::GoToExamAnalysisInterface)
+            // Screen::InvigilatorTTInterface(invigilator_tt) => 
+            //     invigilator_tt.view().map(Message::GoToInvigilatorTTInterface),
+            // Screen::ExamTTInterface(exam_tt) => exam_tt.view().map(Message::GoToExamTTInterface),
+            // Screen::ExamAnalysisInterface(exam_analysis) =>
+            //     exam_analysis.view().map(Message::GoToExamAnalysisInterface)
         }
     }
 }
 
-
-
-mod dashboard {
-    pub struct Dashboard {
-        side_menu: Sidebar,
-        app_Settings: AppSettings,
-    }
-
-    pub struct Sidebar {
-        pub hidden: bool,
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum Message {
-    }
-
-    pub struct AppSettings;
-}
-
 mod screen {
+    pub mod sidebar {
+        #[derive(Debug, Clone)]
+        pub enum Message {
+            OpenDashboard,
+            CreateExamTTProject,
+            CreateInvigilationTTProject,
+            CreateExamAnalysisProject,
+        }
+
+        #[derive(Default)]
+        pub struct Sidebar {
+            pub minimised: bool,
+        }
+
+        impl Sidebar {
+            pub fn new() -> Self {
+                minimised: false,
+            }
+        }
+
+        pub fn toggle_visibility(&mut self) {
+            self.minimised = !self.minimised
+        }
+        
+        pub fn update(&mut self, message: Message) -> Task<Message> {
+            Task::none()
+        }
+
+        fn side_menu<'a>(&self) -> Element<'a, Message> {
+            let menu = Menu::list();
+        }
+
+        pub fn view(&self) -> Element<Message> {
+        }
+
+        pub enum Menu {
+            Dashboard,
+            ExamTTProject,
+            InvigilationTTProject,
+            ExamAnalysisProject,
+
+        }
+
+        impl Menu {
+            fn list() -> Vec<&Self> {
+                vec![
+                    Menu::Dashboard,
+                    Menu::ExamTTProject,
+                    Menu::InvigilationTTProject,
+                    Menu::ExamAnalysisProject,
+                ]
+            }
+        }
+    }
+
     pub mod login {
         use iced::Task;
         use iced::widget::{
@@ -231,49 +263,7 @@ mod screen {
 
         impl ExamAnalysis {
             pub fn view(&self) -> Element<'_, Message> {
-                let exam_tt_svg = svg(svg::Handle::from_path(format!(
-                    "{}/assets/proctor-schedule.svg",
-                    env!("CARGO_MANIFEST_DIR")
-                )))
-                .height(60);
-                let invigilation_tt_svg = svg(svg::Handle::from_path(format!(
-                    "{}/assets/exam-schedule.svg",
-                    env!("CARGO_MANIFEST_DIR")
-                )))
-                .height(60);
-                let exam_analysis_svg = svg(svg::Handle::from_path(format!(
-                    "{}/assets/exam-analysis.svg",
-                    env!("CARGO_MANIFEST_DIR")
-                )))
-                .height(60);
-
-                let welcome_text = text!("Welcome!");
-                let welcome_label: Element<_> = Column::new()
-                    .push(welcome_text.size(30))
-                    .spacing(10)
-                    .align_x(Center)
-                    .into();
-
-                let btn_row = row![
-                    welcome_button(invigilation_tt_svg, "Create Invigilation Timetable"),
-                    welcome_button(exam_tt_svg, "Create Examination Timetable"),
-                    welcome_button(exam_analysis_svg, "Perform Examination Analysis"),
-                ]
-                .spacing(40);
-
-                let welcome_screen_elements: Element<_> = Column::new()
-                    .padding(20)
-                    .spacing(100)
-                    .align_x(Center)
-                    .push(welcome_label)
-                    .push(btn_row)
-                    .into();
-
-                container(welcome_screen_elements)
-                    .padding(20)
-                    .center_x(Fill)
-                    .center_y(Fill)
-                    .into()
+                text!("Exam Analysis").into()
             }
         }
 
@@ -294,49 +284,7 @@ mod screen {
 
         impl ExamTT {
             pub fn view(&self) -> Element<'_, Message> {
-                let exam_tt_svg = svg(svg::Handle::from_path(format!(
-                    "{}/assets/proctor-schedule.svg",
-                    env!("CARGO_MANIFEST_DIR")
-                )))
-                .height(60);
-                let invigilation_tt_svg = svg(svg::Handle::from_path(format!(
-                    "{}/assets/exam-schedule.svg",
-                    env!("CARGO_MANIFEST_DIR")
-                )))
-                .height(60);
-                let exam_analysis_svg = svg(svg::Handle::from_path(format!(
-                    "{}/assets/exam-analysis.svg",
-                    env!("CARGO_MANIFEST_DIR")
-                )))
-                .height(60);
-
-                let welcome_text = text!("Welcome!");
-                let welcome_label: Element<_> = Column::new()
-                    .push(welcome_text.size(30))
-                    .spacing(10)
-                    .align_x(Center)
-                    .into();
-
-                let btn_row = row![
-                    welcome_button(invigilation_tt_svg, "Create Invigilation Timetable"),
-                    welcome_button(exam_tt_svg, "Create Examination Timetable"),
-                    welcome_button(exam_analysis_svg, "Perform Examination Analysis"),
-                ]
-                .spacing(40);
-
-                let welcome_screen_elements: Element<_> = Column::new()
-                    .padding(20)
-                    .spacing(100)
-                    .align_x(Center)
-                    .push(welcome_label)
-                    .push(btn_row)
-                    .into();
-
-                container(welcome_screen_elements)
-                    .padding(20)
-                    .center_x(Fill)
-                    .center_y(Fill)
-                    .into()
+                text!("Exam TT").into()
             }
         }
 
@@ -366,7 +314,9 @@ mod screen {
         }
 
         #[derive(Debug)]
-        pub struct Summaryboard;
+        pub struct Summaryboard {
+            side_menu: Sidebar,
+        }
 
         impl Summaryboard {
             pub fn update(&self, message: Message) -> Task<Message> {
@@ -451,5 +401,42 @@ mod screen {
         pub enum Message {
             CreateInvigilatorList,
         }
+    }
+}
+
+pub mod icon {
+    use iced::svg::Svg;
+    use iced::image::Image;
+
+    pub fn invigilator<'a>() -> Svg<'a> {
+        svg(svg::Handle::from_path(format!( 
+                    "{}/assets/images/proctor-schedule.svg", 
+                    env!("CARGO_MANIFEST_DIR")
+        )))
+            .height(30)
+    }
+
+    pub fn exam<'a>() -> Svg<'a> {
+        svg(svg::Handle::from_path(format!( 
+                    "{}/assets/images/exam-schedule.svg", 
+                    env!("CARGO_MANIFEST_DIR")
+        )))
+            .height(30)
+    }
+
+    pub fn analysis<'a>() -> Svg<'a> {
+        svg(svg::Handle::from_path(format!( 
+                    "{}/assets/images/exam-analysis.svg", 
+                    env!("CARGO_MANIFEST_DIR")
+        )))
+            .height(30)
+    }
+    
+    pub fn ridge<'a>() -> Image<'a> {
+        image(image::Handle::from_path(format!(
+                    "{}/assets/images/Ridge_School_Kumasi_Logo.png",
+                    env!("CARGO_MANIFEST_DIR")
+        )))
+            .height(60)
     }
 }
