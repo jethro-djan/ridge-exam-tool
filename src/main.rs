@@ -1,4 +1,4 @@
-use iced::{Element, Length, Task, widget};
+use iced::{Element, Task};
 
 use screen::login;
 use screen::main_app;
@@ -132,10 +132,10 @@ mod screen {
     pub mod login {
         use iced::Task;
         use iced::widget::{
-            Column, button, center, column, container, image, row, text, text_input,
+            Column, button, column, container, image, text, text_input,
             Container,
         };
-        use iced::{Center, Element, Fill, Length, Theme, Background, Color, Border, border};
+        use iced::{Center, Element, Length, Theme, Background, Color, Border, border};
 
         use crate::RidgeExamTool;
         use crate::Screen;
