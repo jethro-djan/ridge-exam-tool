@@ -1,10 +1,9 @@
 use iced::widget::{
-    Button, Column, button, column, container, row, svg, text,
-    Container, text_input
+    Button, Column, Container, button, column, container, row, svg, text, text_input,
 };
 use iced::{
-    Background, Border, Center, Color, Element, Fill, Length, Rectangle, 
-    Shadow, Size, Task, Theme, border, window,
+    Background, Border, Center, Color, Element, Fill, Length, Rectangle, Shadow, Size, Task, Theme,
+    border, window,
 };
 
 pub fn welcome_button<'a, Message: 'a>(
