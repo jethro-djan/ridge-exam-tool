@@ -1,6 +1,6 @@
 use iced::{Element, Task};
 
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use sqlx::PgPool;
 use std::env;
 use std::sync::Arc;
@@ -26,8 +26,6 @@ struct RidgeExamTool {
     current_user: Option<db::User>
 }
 
-pub struct LoginView(login::Login);
-
 #[derive(Debug)]
 pub enum Screen {
     LoginView(login::Login),
@@ -44,9 +42,9 @@ pub enum Message {
 impl RidgeExamTool {
     pub fn new() -> (Self, Task<Message>) {
         dotenv().ok();
-        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
-            String::from("postgres://postgres:mysecretpassword@localhost:5432/examtool-db")
-        });
+        let database_url = env::var("DATABASE_URL").expect(
+            "Something went wrong with the database URL"
+        );
         (
             Self {
                 screen: Screen::LoginView(login::Login::new(None)),

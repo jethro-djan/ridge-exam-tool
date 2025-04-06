@@ -1,12 +1,11 @@
-[package]
-name = "ridge-exam-tool"
+[workspace]
+members = ["webapp", "client"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+authors = ["Jethro Djan <jthryeboah@gmail.com>"]
 
-[dependencies]
-dotenv = "0.15.0"
-iced = {version = "0.13.1", features = ["svg", "image", "advanced", "tokio"]}
-sqlx = { version = "0.8", features = [ "runtime-tokio", "tls-native-tls", "postgres" ] }
-tokio = { version = "1.44", features = [ "rt-multi-thread" ] }
-argon2 = "0.5.3"
-rand = "0.9.0"
+[workspace.dependencies]
+argon2 = { version = "0.5.3" }
