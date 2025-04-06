@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 dotenv = "0.15.0"
-iced = {version = "0.13.1", features = ["svg", "image", "advanced"]}
+iced = {version = "0.13.1", features = ["svg", "image", "advanced", "tokio"]}
 sqlx = { version = "0.8", features = [ "runtime-tokio", "tls-native-tls", "postgres" ] }
 tokio = { version = "1.44", features = [ "rt-multi-thread" ] }
+argon2 = "0.5.3"
+rand = "0.9.0"
