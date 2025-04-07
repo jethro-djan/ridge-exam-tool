@@ -1,5 +1,15 @@
-/target
-**/.DS_Store
+# Rust related
+/target/
+dist/
+Cargo.lock
 .env
-/db/password.txt
-/dist
+.config/
+
+# Node
+webapp/node_modules/
+
+# Mac specific
+**/.DS_Store
+
+# Database related
+db/password.txt
