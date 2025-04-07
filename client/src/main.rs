@@ -345,6 +345,7 @@ mod screen {
                     .size(15)
                     .on_input(Message::UsernameInputChanged);
                 let password_field = text_input("Enter Password", &self.password)
+                    .secure(true)
                     .width(400)
                     .line_height(text::LineHeight::Relative(2.0))
                     .size(15)
@@ -475,9 +476,11 @@ pub mod db {
     pub async fn create_users_table(pool: Arc<PgPool>) -> Result<(), Error> {
         let query = "
             CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
+                id INTEGER PRIMARY KEY,
                 username VARCHAR(100) NOT NULL UNIQUE,
                 password_hash VARCHAR(255) NOT NULL
+                role VARCHAR(255) NOT NULL
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ";
 
