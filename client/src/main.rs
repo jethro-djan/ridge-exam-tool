@@ -8,6 +8,8 @@ use std::sync::Arc;
 use screen::dashboard;
 use screen::login;
 
+use shared::db::{Error, User, connect, create_users_table, login_user};
+
 fn main() -> iced::Result {
     iced::application(
         RidgeExamTool::title,
@@ -23,7 +25,7 @@ struct RidgeExamTool {
     screen: Screen,
     db_pool: Option<Arc<PgPool>>,
     display_message: String,
-    current_user: Option<db::User>
+    current_user: Option<db::User>,
 }
 
 #[derive(Debug)]
@@ -42,9 +44,8 @@ pub enum Message {
 impl RidgeExamTool {
     pub fn new() -> (Self, Task<Message>) {
         dotenv().ok();
-        let database_url = env::var("DATABASE_URL").expect(
-            "Something went wrong with the database URL"
-        );
+        let database_url =
+            env::var("DATABASE_URL").expect("Something went wrong with the database URL");
         (
             Self {
                 screen: Screen::LoginView(login::Login::new(None)),
@@ -100,17 +101,14 @@ impl RidgeExamTool {
                     return Task::none();
                 };
                 login.db_pool = Some(pool.clone());
-                
-                Task::perform( 
-                    db::create_users_table(pool),
-                    Message::CreateUsersTable
-                )
+
+                Task::perform(db::create_users_table(pool), Message::CreateUsersTable)
             }
             Message::DatabaseConnected(Err(_)) => {
                 self.display_message =
                     String::from("Something went wrong. Contact the administrator for help.");
                 let Screen::LoginView(login) = &mut self.screen else {
-                    return Task::none()
+                    return Task::none();
                 };
                 login.inject_display_message(self.display_message.clone());
 
@@ -208,10 +206,7 @@ mod screen {
 
     pub mod login {
         use iced::widget::{Column, Container, button, column, container, row, text, text_input};
-        use iced::{
-            Background, Border, Center, Color, Element, Length, Theme, border,
-            Task,
-        };
+        use iced::{Background, Border, Center, Color, Element, Length, Task, Theme, border};
 
         use sqlx::postgres::PgPool;
         use std::sync::Arc;
@@ -325,10 +320,8 @@ mod screen {
                         let pool = self.db_pool.clone().unwrap();
 
                         Action::AsyncTask(Task::perform(
-                            async move { 
-                                handle_login(username, password, pool).await 
-                            }, 
-                            Action::Login
+                            async move { handle_login(username, password, pool).await },
+                            Action::Login,
                         ))
                     }
                 }
@@ -444,92 +437,6 @@ pub mod icon {
             env!("CARGO_MANIFEST_DIR")
         )))
         .height(80)
-    }
-}
-
-pub mod db {
-    use argon2::Argon2;
-    use argon2::PasswordHash;
-    use argon2::PasswordVerifier;
-    use sqlx::PgPool;
-    use sqlx::postgres::PgPoolOptions;
-
-    use std::sync::Arc;
-
-    #[derive(sqlx::FromRow, Debug, Clone)]
-    pub struct User {
-        pub id: i32,
-        pub username: String,
-        pub password_hash: String,
-    }
-
-    pub async fn connect(connection_str: &str) -> Result<Arc<PgPool>, Error> {
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .connect(connection_str)
-            .await
-            .map_err(|error| Error::from(error))?;
-
-        Ok(Arc::new(pool))
-    }
-
-    pub async fn create_users_table(pool: Arc<PgPool>) -> Result<(), Error> {
-        let query = "
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY,
-                username VARCHAR(100) NOT NULL UNIQUE,
-                password_hash VARCHAR(255) NOT NULL
-                role VARCHAR(255) NOT NULL
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ";
-
-        sqlx::query(query)
-            .execute(&*pool)
-            .await
-            .map_err(|_| Error::TableNotCreated)?;
-
-        Ok(())
-    }
-
-    pub async fn login_user(pool: &PgPool, username: &str, password: &str) -> Result<User, Error> {
-        let user = sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash FROM users where username = $1",
-        )
-            .bind(username)
-            .fetch_one(pool)
-            .await
-            .map_err(|_| Error::InvalidCredentials)?;
-
-        if verify_password(password, &user.password_hash)? {
-            Ok(user)
-        } else {
-            Err(Error::InvalidCredentials)
-        }
-    }
-
-    fn verify_password(password: &str, hash: &str) -> Result<bool, Error> {
-        let parsed_hash = PasswordHash::new(hash).map_err(|_| Error::PasswordError)?;
-
-        Ok(Argon2::default()
-            .verify_password(password.as_bytes(), &parsed_hash)
-            .is_ok())
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum Error {
-        DbConnectionError,
-        PasswordError,
-        InvalidCredentials,
-        TableNotCreated,
-    }
-
-    impl From<sqlx::Error> for Error {
-        fn from(error: sqlx::Error) -> Error {
-            dbg!(error);
-
-            Error::DbConnectionError
-        }
     }
 }
 
