@@ -1,4 +1,4 @@
-#[cfg(feature = "ssr")]
+// #[cfg(feature = "ssr")]
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     use webapp::app::App;
@@ -7,6 +7,7 @@ async fn main() -> std::io::Result<()> {
     use leptos::config::get_configuration;
     use leptos::prelude::*;
     use leptos_actix::{LeptosRoutes, generate_route_list};
+    use leptos_meta::MetaTags;
 
     dotenvy::dotenv().ok();
     let pool = webapp::db::connect().await.expect("Failed to create database pool");
@@ -42,6 +43,7 @@ async fn main() -> std::io::Result<()> {
                                 <meta charset="Utf-8" />
                                 <AutoReload options=leptos_options.clone() />
                                 <HydrationScripts options=leptos_options.clone() />
+                                <MetaTags />
                             </head>
                             <body>
                                 <App/>
@@ -58,11 +60,11 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-#[cfg(not(feature = "ssr"))]
-pub fn main() {
-    use webapp::app::*;
-    use leptos::mount::mount_to_body;
-
-    console_error_panic_hook::set_once();
-    mount_to_body(App);
-}
+// #[cfg(not(feature = "ssr"))]
+// pub fn main() {
+//     use webapp::app::*;
+//     use leptos::mount::mount_to_body;
+// 
+//     console_error_panic_hook::set_once();
+//     mount_to_body(App);
+// }

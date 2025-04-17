@@ -34,7 +34,7 @@ services:
       - db
 
 networks:
-  postgres:
+  pg-network:
 
 volumes:
   db-data:
