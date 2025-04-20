@@ -13,7 +13,7 @@ pub mod app {
         StaticSegment,
         components::{Route, Router, Routes},
     };
-
+    use leptos::task::spawn_local;
 
 
     #[server]
@@ -23,19 +23,19 @@ pub mod app {
     ) -> Result<bool, ServerFnError> {
         #[cfg(feature = "ssr")]
         {
+            use actix_web::web;
             use leptos_actix::extract;
             // use sqlx::PgPool;
-            use actix_session::Session;
+            use sqlx_core::pool::Pool;
+            use sqlx_postgres::Postgres;
 
-            dotenvy::dotenv().ok();
-            let pool = crate::db::server::connect().await.expect("Failed to create database pool");
+            // dotenvy::dotenv().ok();
+            // let pool = crate::db::server::connect().await.expect("Failed to create database pool");
 
-            // let pool_data: web::Data<Pool<Postgres>> = extract().await?;
-            // let pool = pool_data.get_ref();
-            
-            let session: Session = extract().await?;
+            let pool_data: web::Data<Pool<Postgres>> = extract().await?;
+            let pool = pool_data.get_ref();
 
-            crate::db::login(&pool, session, username, password).await 
+            crate::db::login(pool, username, password).await 
         }
 
         #[cfg(not(feature = "ssr"))]
@@ -164,6 +164,7 @@ pub mod app {
                 // action=login_user
                 on:submit=move |ev| {
                     ev.prevent_default();
+                    let data = LoginUser::from_event(&ev);
                     login_user_request
                        .dispatch((username.get(), password.get()));
                 }
@@ -269,20 +270,12 @@ pub mod db {
         pub password_hash: String,
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct UserSession {
-        pub user_id: i32,
-        pub username: String,
-        pub session_id: String,
-    }
-
     #[derive(Debug, Clone)]
     pub enum Error {
         DbConnectionError,
         PasswordError,
         InvalidCredentials,
         TableNotCreated,
-        SessionTableNotCreated,
     }
  
     #[cfg(feature = "ssr")]
@@ -300,8 +293,7 @@ pub mod db {
                 Self::DbConnectionError => "Failed to connect to database",
                 Self::PasswordError => "DbConnectionError: Failed to connect to database",
                 Self::InvalidCredentials => "Incorrect username and password. Please try again.",
-                Self::TableNotCreated => "Database users table not created.",
-                Self::SessionTableNotCreated => "Session users table not created.",
+                Self::TableNotCreated => "Database error.",
             }; 
             
             write!(f, "{}", error_msg)
@@ -317,6 +309,7 @@ pub mod db {
         use std::sync::Arc;
         use sqlx::{PgPool, postgres::PgPoolOptions};
         use dotenvy::dotenv;
+        use leptos::context::use_context;
         use leptos::prelude::ServerFnError;
         use argon2::{ 
             password_hash::{
@@ -325,10 +318,6 @@ pub mod db {
             },
             Argon2,
         };
-
-        use actix_web::{cookie::Key};
-        use actix_session::{Session};
-        use uuid::Uuid;
 
 
         pub async fn connect() -> Result<Arc<PgPool>, Error> {
@@ -393,10 +382,8 @@ pub mod db {
             Ok(())
         }
 
-        #[cfg(feature = "ssr")]
         pub async fn login(
             pool: &PgPool,
-            session: Session,
             username: String, 
             password: String
         ) -> Result<bool, ServerFnError> {
@@ -404,7 +391,7 @@ pub mod db {
             let user = sqlx::query_as::<_, User>(
                 "SELECT id, username, password_hash FROM users where username = $1",
             )
-            .bind(&username)
+            .bind(username)
             .fetch_optional(pool)
             .await
             .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
@@ -419,21 +406,7 @@ pub mod db {
                         .is_ok();
                     
                     if is_valid {
-                        let session_id = Uuid::new_v4().to_string();
-
-                        crate::db::server::create_user_session(user.id, session_id.clone(), pool)
-                            .await
-                            .expect("Failed to create a user session");
-
-                        let user_session = crate::db::UserSession {
-                            user_id: user.id,
-                            username: username,
-                            session_id: session_id.clone(),
-                        };
-
-                        session.insert("user_session", user_session)
-                            .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
-
+                        // In a real app, you would create a session here
                         Ok(true)
                     } else {
                         Ok(false)
@@ -441,82 +414,6 @@ pub mod db {
                 },
                 None => Ok(false)
             }
-        }
-
-        pub async fn logout(
-            pool: &PgPool,
-            session: Session
-        ) -> Result<(), ServerFnError> {
-            if let Ok(Some(user_session)) = session.get::<crate::db::UserSession>("user_session")
-                .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string())) {
-                 sqlx::query("DELETE FROM user_sessions WHERE session_id = $1")
-                    .bind(&user_session.session_id)
-                    .execute(pool)
-                    .await
-                    .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
-            }
-
-            session.purge();
-            Ok(())
-        }
-
-        pub fn get_secret_session_key() -> Key {
-            dotenvy::dotenv().ok();
-
-            match std::env::var("SESSION_KEY") {
-                Ok(key) => {
-                    if key.len() < 32 {
-                        eprintln!("Warning: SESSION_KEY is too short. Using a randomly generated key instead.");
-                        Key::generate()
-                    } else {
-                        Key::from(key.as_bytes())
-                    }
-                }
-                Err(_) => {
-                    eprintln!("SESSION_KEY not found in environment. Using a randomly generated key.");
-                    eprintln!("Note: Sessions will be invalidated on server restart");
-                    Key::generate()
-                }
-            }
-        }
-
-        pub async fn create_sessions_table(pool: &PgPool) -> Result<(), ServerFnError> {
-            let query = "
-                 CREATE TABLE IF NOT EXISTS user_sessions (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL,
-                    session_id VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP NOT NULL,
-                    expires_at TIMESTAMP NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                )
-            ";
-
-            sqlx::query(query)
-                .execute(pool)
-                .await
-                .map_err(|_| Error::SessionTableNotCreated)?;
-
-            Ok(())
-        }
-
-        pub async fn create_user_session(
-            user_id: i32, 
-            session_id: String, 
-            pool: &PgPool
-        ) -> Result<(), ServerFnError> {
-            let query = "
-                INSERT INTO user_sessions (user_id, session_id, created_at, expires_at)
-                VALUES ($1, $2, NOW(), NOW() + INTERVAL '7 days')
-            ";
-            sqlx::query(query)
-                .bind(user_id)
-                .bind(&session_id)
-                .execute(pool)
-                .await
-                .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
-
-            Ok(())
         }
     }
 
