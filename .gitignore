@@ -13,3 +13,4 @@ webapp/node_modules/
 
 # Database related
 db/password.txt
+cont-secrets/
