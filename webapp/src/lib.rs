@@ -10,17 +10,25 @@ pub mod app {
     use leptos::prelude::*;
     use leptos_meta::*;
     use leptos_router::{
-        path,
-        StaticSegment,
-        components::{Route, Router, Routes, ParentRoute},
+        StaticSegment, 
+        components::{ParentRoute, Route, Router, Routes, A},
         nested_router::Outlet,
+        path,
     };
 
+    pub async fn get_users() -> Result<Vec<crate::db::User>, ServerFnError> {
+        #[cfg(feature = "ssr")]
+        {
+            crate::db::server::get_users_impl().await
+        }
+        #[cfg(not(feature = "ssr"))]
+        {
+            unreachable!()
+        }
+    }
+
     #[server]
-    pub async fn login_user(
-        username: String, 
-        password: String
-    ) -> Result<bool, ServerFnError> {
+    pub async fn login_user(username: String, password: String) -> Result<bool, ServerFnError> {
         #[cfg(feature = "ssr")]
         {
             use leptos_actix::extract;
@@ -28,19 +36,23 @@ pub mod app {
             use actix_session::Session;
 
             dotenvy::dotenv().ok();
-            let pool = crate::db::server::connect().await.expect("Failed to create database pool");
+            let pool = crate::db::server::connect()
+                .await
+                .expect("Failed to create database pool");
 
             // let pool_data: web::Data<Pool<Postgres>> = extract().await?;
             // let pool = pool_data.get_ref();
-            
+
             let session: Session = extract().await?;
 
-            crate::db::login(&pool, session, username, password).await 
+            crate::db::login(&pool, session, username, password).await
         }
 
         #[cfg(not(feature = "ssr"))]
         {
-            Err(ServerFnError::ServerError("Server function called on client".into()))
+            Err(ServerFnError::ServerError(
+                "Server function called on client".into(),
+            ))
         }
     }
 
@@ -51,12 +63,12 @@ pub mod app {
             <Stylesheet id="leptos" href="/pkg/webapp.css" />
             <Router>
                 <Routes fallback=move || "Not found.">
-                    <Route path=StaticSegment(Page::Login.path()) view=LoginView/>
+                    <Route path=StaticSegment(Page::Login.path()) view=LoginView />
                     <ParentRoute path=StaticSegment(Page::AdminPanel.path()) view=AdminPanelView>
-                        <Route path=StaticSegment(Page::Users.path()) view=UserManagementView/>
-                        <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView/>
-                        <Route path=StaticSegment(Page::Settings.path()) view=SettingsView/>
-                        <Route path=path!("") view=DashboardView/>
+                        <Route path=StaticSegment("") view=DashboardView />
+                        <Route path=StaticSegment(Page::Users.path()) view=UserManagementView />
+                        <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView />
+                        <Route path=StaticSegment(Page::Settings.path()) view=SettingsView />
                     </ParentRoute>
                 </Routes>
             </Router>
@@ -73,7 +85,6 @@ pub mod app {
                     </LoginFormContainer>
                 </PageContent>
             </PageLayout>
-
         }
     }
 
@@ -81,9 +92,7 @@ pub mod app {
     fn PageLayout(children: Children) -> impl IntoView {
         view! {
             <div class="min-h-screen flex flex-col bg-gray-100">
-                <main class="flex-grow">
-                    {children()}
-                </main>
+                <main class="flex-grow">{children()}</main>
                 <Footer />
             </div>
         }
@@ -91,20 +100,12 @@ pub mod app {
 
     #[component]
     fn PageContent(children: Children) -> impl IntoView {
-        view! {
-            <div class="h-screen flex items-center justify-center">
-                {children()}
-            </div>
-        }
+        view! { <div class="h-screen flex items-center justify-center">{children()}</div> }
     }
 
     #[component]
     fn LoginFormContainer(children: Children) -> impl IntoView {
-        view! {
-            <div class="bg-white rounded-lg shadow-md p-8 w-full max-w-md">
-                {children()}
-            </div>
-        }
+        view! { <div class="bg-white rounded-lg shadow-md p-8 w-full max-w-md">{children()}</div> }
     }
 
     #[component]
@@ -122,10 +123,8 @@ pub mod app {
     }
 
     #[component]
-    fn LoginForm<F, IV>(
-        render_prop: F,
-    ) -> impl IntoView
-    where 
+    fn LoginForm<F, IV>(render_prop: F) -> impl IntoView
+    where
         F: Fn() -> IV + std::marker::Send + 'static,
         IV: IntoView + 'static,
     {
@@ -133,44 +132,41 @@ pub mod app {
         let password = RwSignal::new(String::new());
         let (error_msg, set_error_msg) = signal(String::new());
 
-
         let login_user_request = Action::new(|login_credentials: &(String, String)| {
             let (username, password) = (
-                login_credentials.0.to_owned(), login_credentials.1.to_owned()
+                login_credentials.0.to_owned(),
+                login_credentials.1.to_owned(),
             );
             async move { login_user(username, password).await }
         });
 
         let navigate = leptos_router::hooks::use_navigate();
 
-        Effect::new(move |_| {
-            match login_user_request.value().get() {
-                Some(Ok(true)) => {
-                    navigate("/admin", Default::default());
-                }
-                Some(Ok(false)) => {
-                    set_error_msg.set(String::from("Invalid credentials"));
-                }
-                Some(Err(e)) => {
-                    set_error_msg.set(format!("Login error: {}", e));
-                }
-                _ => {}
+        Effect::new(move |_| match login_user_request.value().get() {
+            Some(Ok(true)) => {
+                navigate("/admin", Default::default());
             }
+            Some(Ok(false)) => {
+                set_error_msg.set(String::from("Invalid credentials"));
+            }
+            Some(Err(e)) => {
+                set_error_msg.set(format!("Login error: {}", e));
+            }
+            _ => {}
         });
 
         view! {
             {render_prop()}
-            <form 
+            <form
                 class="space-y-6"
                 on:submit=move |ev| {
                     ev.prevent_default();
-                    login_user_request
-                       .dispatch((username.get(), password.get()));
+                    login_user_request.dispatch((username.get(), password.get()));
                 }
             >
                 <div>
                     <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
-                        "Username" 
+                        "Username"
                     </label>
                     <input
                         type="text"
@@ -184,7 +180,7 @@ pub mod app {
 
                 <div>
                     <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
-                        "Password" 
+                        "Password"
                     </label>
                     <input
                         type="password"
@@ -218,9 +214,7 @@ pub mod app {
                         <div class="w-full border-t border-gray-300"></div>
                     </div>
                     <div class="relative flex justify-center text-sm">
-                        <span class="px-2 bg-white text-gray-500">
-                            "School Management System"
-                        </span>
+                        <span class="px-2 bg-white text-gray-500">"School Management System"</span>
                     </div>
                 </div>
             </div>
@@ -229,6 +223,13 @@ pub mod app {
 
     #[component]
     fn AdminPanelView() -> impl IntoView {
+        let users = Resource::new(
+            || (), 
+            |_| async move { get_users().await }
+        );
+        
+        provide_context(users);
+
         view! {
             <div class="bg-gray-100 font-sans">
                 <div class="flex h-screen">
@@ -249,19 +250,29 @@ pub mod app {
                 <nav class="mt-8">
                     <ul>
                         <li class="px-6 py-3 hover:bg-gray-700">
-                            <a href="/admin" class="block">"Dashboard"</a>
+                            <A href="/admin" prop:class="block">
+                                "Dashboard"
+                            </A>
                         </li>
                         <li class="px-6 py-3 hover:bg-gray-700">
-                            <a href="/admin/users" class="block font-medium">User Management</a>
+                            <A href="/admin/users" prop:class="block font-medium">
+                                User Management
+                            </A>
                         </li>
                         <li class="px-6 py-3 hover:bg-gray-700">
-                            <a href="/admin/roles" class="block">Role Management</a>
+                            <A href="/admin/roles" prop:class="block">
+                                Role Management
+                            </A>
                         </li>
                         <li class="px-6 py-3 hover:bg-gray-700">
-                            <a href="#" class="block">Audit Logs</a>
+                            <A href="#" prop:class="block">
+                                Audit Logs
+                            </A>
                         </li>
                         <li class="px-6 py-3 hover:bg-gray-700">
-                            <a href="/admin/settings" class="block">Settings</a>
+                            <A href="/admin/settings" prop:class="block">
+                                Settings
+                            </A>
                         </li>
                     </ul>
                 </nav>
@@ -269,19 +280,80 @@ pub mod app {
         }
     }
 
+    fn LoadingSpinner() -> impl IntoView {
+        view! {
+            <div class="flex justify-center items-center py-10">
+                <div class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        }
+    }
+
     fn DashboardView() -> impl IntoView {
-        view! {<p>"Dashboard view"</p>}
+        view! { <p>"Dashboard view"</p> }
     }
 
     fn UserManagementView() -> impl IntoView {
-        view! {<p>"User managment view"</p>}
+        let users = use_context::<Resource<Result<Vec<crate::db::User>, ServerFnError>>>()
+            .expect("users context missing");
+        view! {
+            <div class="p-4">
+                <h1 class="text-2xl font-bold mb-4">"Users"</h1>
+
+                <Suspense fallback=move || view! { <LoadingSpinner/> }>
+                {move || {
+                    users.get().map(|result| view! {
+                        <div class="bg-white rounded-lg shadow overflow-auto-x">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            "Name"
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            "Username"
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            "Role"
+                                        </th>
+                                    </tr>
+                                </thead>
+
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    {match result {
+                                        Ok(users) => users.into_iter().map(|user| {
+                                            view! {
+                                                <tr class="border-t hover:bg-gray-50">
+                                                    <td class="py-2 px-4">{move || format!("{} {}", user.first_name, user.last_name)}</td>
+                                                    <td class="py-2 px-4">{user.username}</td>
+                                                    <td class="py-2 px-4">{user.role_name}</td>
+                                                </tr>
+                                            }.into_any()
+                                        })
+                                        .collect::<Vec<_>>(),
+                                        Err(e) => vec![view! {
+                                            <tr>
+                                                <td colspan="5" class="py-2 px-4 text-red-500">
+                                                    {move || format!("Error loading users: {}", e.to_string())}
+                                                </td>
+                                            </tr>
+                                        }.into_any()]
+                                    }}
+                                </tbody>
+                            </table>
+                        </div>
+                    })
+                }}
+                </Suspense>
+            </div>
+        }
     }
+
     fn RoleManagementView() -> impl IntoView {
-        view! {<p>"Role managment view"</p>}
+        view! { <p>"Role managment view"</p> }
     }
 
     fn SettingsView() -> impl IntoView {
-        view! {<p>"Settings view"</p>}
+        view! { <p>"Settings view"</p> }
     }
 
     #[component]
@@ -318,11 +390,19 @@ pub mod db {
     use serde::{Deserialize, Serialize};
 
     #[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     pub struct User {
         pub id: i32,
         pub username: String,
         pub password_hash: String,
+        pub first_name: String,
+        pub last_name: String,
+        pub email: String,
+        pub role_id: i32,
+        pub role_name: Option<String>,
+        pub is_active: bool,
+        pub created_at: chrono::DateTime<chrono::Utc>,
+        pub last_updated: chrono::DateTime<chrono::Utc>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -330,6 +410,10 @@ pub mod db {
         pub user_id: i32,
         pub username: String,
         pub session_id: String,
+        pub role_id: i32,
+        pub role_name: Option<String>,
+        pub first_name: String,
+        pub last_name: String,
     }
 
     #[derive(Debug, Clone)]
@@ -339,8 +423,13 @@ pub mod db {
         InvalidCredentials,
         TableNotCreated,
         SessionTableNotCreated,
+        InsertRolesFailed,
+        TransactionFailed,
+        RoleNotFound,
+        SeedUserFailed,
+        DatabaseQueryFailed,
     }
- 
+
     #[cfg(feature = "ssr")]
     impl From<sqlx::Error> for Error {
         fn from(error: sqlx::Error) -> Error {
@@ -358,8 +447,13 @@ pub mod db {
                 Self::InvalidCredentials => "Incorrect username and password. Please try again.",
                 Self::TableNotCreated => "Database users table not created.",
                 Self::SessionTableNotCreated => "Session users table not created.",
-            }; 
-            
+                Self::InsertRolesFailed => "Failed to insert roles",
+                Self::TransactionFailed => "Failed to commit transaction",
+                Self::RoleNotFound => "Failed to retrieve role",
+                Self::SeedUserFailed => "Failed to seed user",
+                Self::DatabaseQueryFailed => "Failed to make database query",
+            };
+
             write!(f, "{}", error_msg)
         }
     }
@@ -368,29 +462,28 @@ pub mod db {
 
     #[cfg(feature = "ssr")]
     pub mod server {
-        use super::User;
         use super::Error;
-        use std::sync::Arc;
-        use sqlx::{PgPool, postgres::PgPoolOptions};
+        use super::User;
+        use argon2::{
+            Argon2,
+            password_hash::{
+                PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng,
+            },
+        };
         use dotenvy::dotenv;
         use leptos::prelude::ServerFnError;
-        use argon2::{ 
-            password_hash::{
-                rand_core::OsRng,
-                SaltString, PasswordHash, PasswordHasher, PasswordVerifier,
-            },
-            Argon2,
-        };
+        use leptos::server;
+        use leptos::context::use_context;
+        use sqlx::{PgPool, postgres::PgPoolOptions, Row, Column};
+        use std::sync::Arc;
 
-        use actix_web::{cookie::Key};
-        use actix_session::{Session};
+        use actix_session::Session;
+        use actix_web::cookie::Key;
         use uuid::Uuid;
-
 
         pub async fn connect() -> Result<Arc<PgPool>, Error> {
             dotenv().ok();
-            let database_url = std::env::var("DATABASE_URL")
-                .expect("DATABASE_URL must be set");
+            let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
             let pool = PgPoolOptions::new()
                 .max_connections(5)
@@ -400,21 +493,77 @@ pub mod db {
             Ok(Arc::new(pool))
         }
 
+        pub async fn create_roles_table(pool: &PgPool) -> Result<(), Error> {
+            sqlx::query(
+                "CREATE TABLE IF NOT EXISTS roles (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL UNIQUE,
+                    description TEXT
+                )"
+            )
+            .execute(pool)
+            .await
+            .map_err(|e| {
+                log::error!("Failed to create roles table: {}", e);
+                Error::TableNotCreated
+            })?;
+
+            let mut tx = pool.begin().await.map_err(|e| {
+                log::error!("Failed to begin transaction: {}", e);
+                Error::TransactionFailed
+            })?;
+
+            for (name, description) in [
+                ("admin", "Full system access"),
+                ("teacher", "Can view students and enter grades")
+            ] {
+                sqlx::query(
+                    "INSERT INTO roles (name, description)
+                    VALUES ($1, $2)
+                    ON CONFLICT (name) DO NOTHING"
+                )
+                .bind(name)
+                .bind(description)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    log::error!("Failed to insert role {}: {}", name, e);
+                    Error::InsertRolesFailed
+                })?;
+            }
+
+            tx.commit().await.map_err(|e| {
+                log::error!("Failed to commit transaction: {}", e);
+                Error::TransactionFailed
+            })?;
+
+            Ok(())
+        }
         pub async fn create_users_table(pool: &PgPool) -> Result<(), Error> {
+            create_roles_table(pool).await?;
+
             let query = "
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
                     username VARCHAR(100) NOT NULL UNIQUE,
                     password_hash VARCHAR(255) NOT NULL,
-                    role VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    first_name VARCHAR(100) NOT NULL,
+                    last_name VARCHAR(100) NOT NULL,
+                    email VARCHAR(255) NOT NULL UNIQUE,
+                    role_id INTEGER NOT NULL REFERENCES roles(id),
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    last_updated TIMESTAMPTZ DEFAULT NOW()
                 )
             ";
 
             sqlx::query(query)
                 .execute(pool)
                 .await
-                .map_err(|_| Error::TableNotCreated)?;
+                .map_err(|e| {
+                    log::error!("Failed to create users table: {}", e);
+                    Error::TableNotCreated
+                })?;
 
             Ok(())
         }
@@ -422,43 +571,163 @@ pub mod db {
         pub async fn seed_admin_user(pool: &PgPool) -> Result<(), Error> {
             dotenv().ok();
             let username = "admin";
-            let password = std::env::var("ADMIN_PASSWORD").unwrap_or_else(|_| "admin123".into());
-            let role = "admin";
-            
-            let salt = SaltString::generate(&mut OsRng);
 
+            let user_exists = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
+                .bind(username)
+                .fetch_one(pool)
+                .await
+                .map_err(|e| {
+                    log::error!("Failed to check if admin user exists: {}", e);
+                    Error::DatabaseQueryFailed
+                })?;
+            
+            if user_exists {
+                log::info!("Admin user already exists, skipping seed");
+                return Ok(());
+            }
+
+            let password = std::env::var("ADMIN_PASSWORD").unwrap_or_else(|_| "admin123".into());
+            let first_name = "System";
+            let last_name = "Administrator";
+            let email = "admin@example.com";
+            
+            let role_id: i32 = sqlx::query_scalar("SELECT id FROM roles WHERE name = $1")
+                .bind("admin")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| {
+                    log::error!("Failed to get admin role ID: {}", e);
+                    Error::RoleNotFound
+                })?;
+
+            let salt = SaltString::generate(&mut OsRng);
             let argon2 = Argon2::default();
-            let password_hash = argon2.hash_password(
-                password.as_bytes(),
-                &salt
-            ).unwrap();
+            let password_hash = argon2.hash_password(password.as_bytes(), &salt).unwrap();
 
             sqlx::query(
                 r#"
-                INSERT INTO users (username, password_hash, role)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (username) DO NOTHING
+                INSERT INTO users (username, password_hash, first_name, last_name, email, role_id, is_active)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 "#,
             )
             .bind(username)
             .bind(password_hash.to_string())
-            .bind(role)
+            .bind(first_name)
+            .bind(last_name)
+            .bind(email)
+            .bind(role_id)
+            .bind(true)
             .execute(pool)
-            .await?;
+            .await
+            .map_err(|e| {
+                log::error!("Failed to seed admin user: {}", e);
+                Error::SeedUserFailed
+            })?;
 
             Ok(())
+        }
+
+
+        pub async fn get_all_users(pool: &PgPool) -> Result<Vec<User>, Error> {
+            let query = sqlx::query(
+                r#"
+                SELECT
+                    u.id,
+                    u.username,
+                    u.password_hash,
+                    u.first_name,
+                    u.last_name,
+                    u.email,
+                    u.role_id, 
+                    r.name as "role_name",
+                    u.is_active,
+                    u.created_at,
+                    u.last_updated
+                FROM users u
+                LEFT JOIN roles r ON u.role_id = r.id
+                ORDER BY u.last_name, u.first_name
+                "#
+            );
+
+            let row = query.fetch_one(pool).await.map_err(|e| {
+                log::error!("Column check failed: {}", e);
+                Error::DatabaseQueryFailed
+            })?;
+
+            log::info!("Columns: {:?}", row.columns().iter().map(|c| c.name()).collect::<Vec<_>>());
+
+            let users = sqlx::query_as::<_, User>(
+                r#"
+                SELECT 
+                    u.id, 
+                    u.username, 
+                    u.password_hash, 
+                    u.first_name, 
+                    u.last_name, 
+                    u.email, 
+                    u.role_id, 
+                    r.name as "role_name", 
+                    u.is_active, 
+                    u.created_at, 
+                    u.last_updated
+                FROM users u
+                LEFT JOIN roles r ON u.role_id = r.id
+                ORDER BY u.last_name, u.first_name
+                "#
+            )
+            .fetch_all(pool)
+            .await
+            .map_err(|e| {
+                log::error!("Failed to retrieve users: {}", e);
+                Error::DatabaseQueryFailed
+            })?;
+
+            Ok(users)
+        }
+
+        #[cfg_attr(feature = "ssr", server)]
+        pub async fn get_users_impl() -> Result<Vec<User>, ServerFnError> {
+            #[cfg(feature = "ssr")]
+            {
+                dotenvy::dotenv().ok();
+                let pool = crate::db::server::connect()
+                    .await
+                    .expect("Failed to create database pool");
+                // let pool = use_context::<PgPool>()
+                //     .expect("Pool should be in context");
+                println!("{}", format!("{:?}", pool.clone()));
+                
+                get_all_users(&pool)
+                    .await
+                    .map_err(|e| ServerFnError::ServerError(e.to_string()))
+            }
         }
 
         #[cfg(feature = "ssr")]
         pub async fn login(
             pool: &PgPool,
             session: Session,
-            username: String, 
-            password: String
+            username: String,
+            password: String,
         ) -> Result<bool, ServerFnError> {
-
             let user = sqlx::query_as::<_, User>(
-                "SELECT id, username, password_hash FROM users where username = $1",
+                r#"
+                SELECT 
+                    u.id, 
+                    u.username, 
+                    u.password_hash, 
+                    u.first_name, 
+                    u.last_name, 
+                    u.email, 
+                    u.role_id, 
+                    r.name as "role_name", 
+                    u.is_active, 
+                    u.created_at, 
+                    u.last_updated
+                FROM users u
+                LEFT JOIN roles r ON u.role_id = r.id
+                WHERE u.username = $1
+                "#,
             )
             .bind(&username)
             .fetch_optional(pool)
@@ -467,13 +736,19 @@ pub mod db {
 
             match user {
                 Some(user) => {
+                    if !user.is_active {
+                        log::warn!("Login attempt for inactive user: {}", username);
+                        return Ok(false);
+                    }
+
                     let parsed_hash = PasswordHash::new(&user.password_hash)
                         .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
-                    
+
                     let argon2 = Argon2::default();
-                    let is_valid = argon2.verify_password(password.as_bytes(), &parsed_hash)
+                    let is_valid = argon2
+                        .verify_password(password.as_bytes(), &parsed_hash)
                         .is_ok();
-                    
+
                     if is_valid {
                         let session_id = Uuid::new_v4().to_string();
 
@@ -483,29 +758,37 @@ pub mod db {
 
                         let user_session = crate::db::UserSession {
                             user_id: user.id,
-                            username: username,
+                            username: user.username.clone(),
                             session_id: session_id.clone(),
+                            role_id: user.role_id,
+                            role_name: user.role_name.clone(),
+                            first_name: user.first_name.clone(),
+                            last_name: user.last_name.clone(),
                         };
 
-                        session.insert("user_session", user_session)
+                        session
+                            .insert("user_session", user_session)
                             .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
 
                         Ok(true)
                     } else {
+                        log::warn!("Invalid password for user: {}", username);
                         Ok(false)
                     }
-                },
-                None => Ok(false)
+                }
+                None => {
+                    log::warn!("Login attempt for non-existent user: {}", username);
+                    Ok(false)
+                }
             }
         }
 
-        pub async fn logout(
-            pool: &PgPool,
-            session: Session
-        ) -> Result<(), ServerFnError> {
-            if let Ok(Some(user_session)) = session.get::<crate::db::UserSession>("user_session")
-                .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string())) {
-                 sqlx::query("DELETE FROM user_sessions WHERE session_id = $1")
+        pub async fn logout(pool: &PgPool, session: Session) -> Result<(), ServerFnError> {
+            if let Ok(Some(user_session)) = session
+                .get::<crate::db::UserSession>("user_session")
+                .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))
+            {
+                sqlx::query("DELETE FROM user_sessions WHERE session_id = $1")
                     .bind(&user_session.session_id)
                     .execute(pool)
                     .await
@@ -522,14 +805,18 @@ pub mod db {
             match std::env::var("SESSION_KEY") {
                 Ok(key) => {
                     if key.len() < 32 {
-                        eprintln!("Warning: SESSION_KEY is too short. Using a randomly generated key instead.");
+                        eprintln!(
+                            "Warning: SESSION_KEY is too short. Using a randomly generated key instead."
+                        );
                         Key::generate()
                     } else {
                         Key::from(key.as_bytes())
                     }
                 }
                 Err(_) => {
-                    eprintln!("SESSION_KEY not found in environment. Using a randomly generated key.");
+                    eprintln!(
+                        "SESSION_KEY not found in environment. Using a randomly generated key."
+                    );
                     eprintln!("Note: Sessions will be invalidated on server restart");
                     Key::generate()
                 }
@@ -542,8 +829,8 @@ pub mod db {
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL,
                     session_id VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP NOT NULL,
-                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    expires_at TIMESTAMPTZ NOT NULL,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                 )
             ";
@@ -557,9 +844,9 @@ pub mod db {
         }
 
         pub async fn create_user_session(
-            user_id: i32, 
-            session_id: String, 
-            pool: &PgPool
+            user_id: i32,
+            session_id: String,
+            pool: &PgPool,
         ) -> Result<(), ServerFnError> {
             let query = "
                 INSERT INTO user_sessions (user_id, session_id, created_at, expires_at)
