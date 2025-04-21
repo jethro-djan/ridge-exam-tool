@@ -10,11 +10,11 @@ pub mod app {
     use leptos::prelude::*;
     use leptos_meta::*;
     use leptos_router::{
+        path,
         StaticSegment,
-        components::{Route, Router, Routes},
+        components::{Route, Router, Routes, ParentRoute},
+        nested_router::Outlet,
     };
-
-
 
     #[server]
     pub async fn login_user(
@@ -52,7 +52,12 @@ pub mod app {
             <Router>
                 <Routes fallback=move || "Not found.">
                     <Route path=StaticSegment(Page::Login.path()) view=LoginView/>
-                    <Route path=StaticSegment(Page::AdminPanel.path()) view=AdminPanelView/>
+                    <ParentRoute path=StaticSegment(Page::AdminPanel.path()) view=AdminPanelView>
+                        <Route path=StaticSegment(Page::Users.path()) view=UserManagementView/>
+                        <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView/>
+                        <Route path=StaticSegment(Page::Settings.path()) view=SettingsView/>
+                        <Route path=path!("") view=DashboardView/>
+                    </ParentRoute>
                 </Routes>
             </Router>
         }
@@ -136,10 +141,6 @@ pub mod app {
             async move { login_user(username, password).await }
         });
 
-        // let login_user = ServerAction::<LoginUser>::new();
-        // let login_user_fn_value = login_user_request.value();
-        // let has_error = move || login_user_fn_value.with(|val| matches!(val, Some(Err(_))));
-
         let navigate = leptos_router::hooks::use_navigate();
 
         Effect::new(move |_| {
@@ -161,7 +162,6 @@ pub mod app {
             {render_prop()}
             <form 
                 class="space-y-6"
-                // action=login_user
                 on:submit=move |ev| {
                     ev.prevent_default();
                     login_user_request
@@ -230,8 +230,58 @@ pub mod app {
     #[component]
     fn AdminPanelView() -> impl IntoView {
         view! {
-            <p>"Hello, there"</p>
+            <div class="bg-gray-100 font-sans">
+                <div class="flex h-screen">
+                    <Sidebar />
+                    <Outlet />
+                </div>
+            </div>
         }
+    }
+
+    #[component]
+    fn Sidebar() -> impl IntoView {
+        view! {
+            <div class="w-64 bg-gray-600 text-white">
+                <div class="h-16 bg-blue-600 flex items-center justify-center">
+                    <h1 class="text-xl font-bold">"Admin Panel"</h1>
+                </div>
+                <nav class="mt-8">
+                    <ul>
+                        <li class="px-6 py-3 hover:bg-gray-700">
+                            <a href="/admin" class="block">"Dashboard"</a>
+                        </li>
+                        <li class="px-6 py-3 hover:bg-gray-700">
+                            <a href="/admin/users" class="block font-medium">User Management</a>
+                        </li>
+                        <li class="px-6 py-3 hover:bg-gray-700">
+                            <a href="/admin/roles" class="block">Role Management</a>
+                        </li>
+                        <li class="px-6 py-3 hover:bg-gray-700">
+                            <a href="#" class="block">Audit Logs</a>
+                        </li>
+                        <li class="px-6 py-3 hover:bg-gray-700">
+                            <a href="/admin/settings" class="block">Settings</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        }
+    }
+
+    fn DashboardView() -> impl IntoView {
+        view! {<p>"Dashboard view"</p>}
+    }
+
+    fn UserManagementView() -> impl IntoView {
+        view! {<p>"User managment view"</p>}
+    }
+    fn RoleManagementView() -> impl IntoView {
+        view! {<p>"Role managment view"</p>}
+    }
+
+    fn SettingsView() -> impl IntoView {
+        view! {<p>"Settings view"</p>}
     }
 
     #[component]
@@ -246,13 +296,19 @@ pub mod app {
     pub enum Page {
         Login,
         AdminPanel,
+        Users,
+        Roles,
+        Settings,
     }
 
     impl Page {
         pub fn path(&self) -> &'static str {
             match self {
-                Self::AdminPanel => "/admin",
                 Self::Login => "/",
+                Self::AdminPanel => "/admin",
+                Self::Users => "users",
+                Self::Roles => "roles",
+                Self::Settings => "settings",
             }
         }
     }

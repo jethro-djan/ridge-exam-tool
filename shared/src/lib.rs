@@ -158,4 +158,3 @@ mod domain {
         exam_pair: ExamPair,
     }
 }
-

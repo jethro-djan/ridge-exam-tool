@@ -1,14 +1,14 @@
- #[cfg(feature = "ssr")]
+#[cfg(feature = "ssr")]
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    use webapp::app::App;
     use actix_files::Files;
-    use actix_web::*;
     use actix_session::{SessionMiddleware, storage::CookieSessionStore};
+    use actix_web::*;
     use leptos::config::get_configuration;
     use leptos::prelude::*;
     use leptos_actix::{LeptosRoutes, generate_route_list};
     use leptos_meta::MetaTags;
+    use webapp::app::App;
 
     unsafe {
         std::env::set_var("RUST_LOG", "debug");
@@ -16,7 +16,9 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     dotenvy::dotenv().ok();
-    let pool = webapp::db::server::connect().await.expect("Failed to create database pool");
+    let pool = webapp::db::server::connect()
+        .await
+        .expect("Failed to create database pool");
 
     webapp::db::server::create_users_table(&pool)
         .await
@@ -76,12 +78,10 @@ async fn main() -> std::io::Result<()> {
                     }
                 }
             })
-            .wrap(
-                SessionMiddleware::new(
-                    CookieSessionStore::default(),
-                    secret_key.clone()
-                )
-            )
+            .wrap(SessionMiddleware::new(
+                CookieSessionStore::default(),
+                secret_key.clone(),
+            ))
             .default_service(web::to(|| HttpResponse::Ok()))
     })
     .bind(&addr)?
@@ -90,5 +90,4 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[cfg(not(feature = "ssr"))]
-pub fn main() {
-}
+pub fn main() {}
