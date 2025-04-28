@@ -32,7 +32,6 @@ pub mod app {
         #[cfg(feature = "ssr")]
         {
             use leptos_actix::extract;
-            // use sqlx::PgPool;
             use actix_session::Session;
 
             dotenvy::dotenv().ok();
@@ -40,12 +39,34 @@ pub mod app {
                 .await
                 .expect("Failed to create database pool");
 
-            // let pool_data: web::Data<Pool<Postgres>> = extract().await?;
-            // let pool = pool_data.get_ref();
-
             let session: Session = extract().await?;
 
             crate::db::login(&pool, session, username, password).await
+        }
+
+        #[cfg(not(feature = "ssr"))]
+        {
+            Err(ServerFnError::ServerError(
+                "Server function called on client".into(),
+            ))
+        }
+    }
+
+    #[server]
+    pub async fn logout_user() -> Result<(), ServerFnError> {
+        #[cfg(feature = "ssr")]
+        {
+            use leptos_actix::extract;
+            use actix_session::Session;
+
+            dotenvy::dotenv().ok();
+            let pool = crate::db::server::connect()
+                .await
+                .expect("Failed to create database pool");
+
+            let session: Session = extract().await?;
+
+            crate::db::logout(&pool, session).await
         }
 
         #[cfg(not(feature = "ssr"))]
@@ -91,7 +112,7 @@ pub mod app {
     #[component]
     fn PageLayout(children: Children) -> impl IntoView {
         view! {
-            <div class="min-h-screen flex flex-col bg-gray-100">
+            <div class="min-h-screen flex flex-col bg-gray-50">
                 <main class="flex-grow">{children()}</main>
                 <Footer />
             </div>
@@ -125,7 +146,7 @@ pub mod app {
     #[component]
     fn LoginForm<F, IV>(render_prop: F) -> impl IntoView
     where
-        F: Fn() -> IV + std::marker::Send + 'static,
+        F: Fn() -> IV + Send + Sync + 'static,
         IV: IntoView + 'static,
     {
         let username = RwSignal::new(String::new());
@@ -204,7 +225,7 @@ pub mod app {
                 </div>
             </form>
 
-            <div class="flex justify-center mt-6">
+            <div class="flex justify-center mt-6 text-red-700">
                 <label>{error_msg}</label>
             </div>
 
@@ -223,89 +244,164 @@ pub mod app {
 
     #[component]
     fn AdminPanelView() -> impl IntoView {
+        let navigate = leptos_router::hooks::use_navigate();
+
         let users = Resource::new(
             || (), 
             |_| async move { get_users().await }
         );
+
+        let title = RwSignal::new(String::from("Dashboard"));
         
         provide_context(users);
+        provide_context(title);
 
         view! {
-            <div class="bg-gray-100 font-sans">
-                <div class="flex h-screen">
-                    <Sidebar />
-                    <Outlet />
+            <PageLayout>
+                <PageContent>
+                    <div class="flex h-screen">
+                        <Sidebar />
+                        <div class="flex-1 overflow-auto">
+                            <TitleBar />
+                            <div class="p-6">
+                                <Outlet />
+                            </div>
+                        </div>
+                    </div>
+                </PageContent>
+            </PageLayout>
+        }
+    }
+
+    #[component]
+    fn Sidebar() -> impl IntoView {
+        let logout_user_request = Action::new(|input: &()| {
+            async move { logout_user().await }
+        });
+        view! {
+            <div class="w-64 bg-gray-800 text-white flex flex-col h-full">
+                <div class="p-4 font-bold text-xl">School Admin</div>
+                <nav class="mt-8 flex-grow">
+                    <a href="/admin" class="block px-3 py-4 hover:bg-gray-700">
+                        "Dashboard"
+                    </a>
+                    <a href="/admin/users" class="block px-3 py-4 hover:bg-gray-700">
+                        "Users"
+                    </a>
+                    <a href="/admin/roles" class="block px-3 py-4 hover:bg-gray-700">
+                        "Roles"
+                    </a>
+                    <a href="#" class="block px-3 py-4 hover:bg-gray-700">
+                        "Audits"
+                    </a>
+                    <a href="/admin/settings" class="block px-3 py-4 hover:bg-gray-700">
+                        "Settings"
+                    </a>
+                </nav>
+                <div class="mt-auto border-t border-gray-700">
+                    <a 
+                        href="#" 
+                        class="block px-3 py-4 hover:bg-gray-700 text-red-400"
+                        on:click=move |ev| {
+                            ev.prevent_default();
+                            logout_user_request.dispatch(());
+                            let navigate = leptos_router::hooks::use_navigate();
+                            navigate("/", Default::default());
+                        }
+                    >
+                        "Logout"
+                    </a>
                 </div>
             </div>
         }
     }
 
     #[component]
-    fn Sidebar() -> impl IntoView {
+    fn TitleBar() -> impl IntoView {
+        let title = use_context::<RwSignal<String>>()
+            .expect("title context should be provided");
         view! {
-            <div class="w-64 bg-gray-600 text-white">
-                <div class="h-16 bg-blue-600 flex items-center justify-center">
-                    <h1 class="text-xl font-bold">"Admin Panel"</h1>
-                </div>
-                <nav class="mt-8">
-                    <ul>
-                        <li class="px-6 py-3 hover:bg-gray-700">
-                            <A href="/admin" prop:class="block">
-                                "Dashboard"
-                            </A>
-                        </li>
-                        <li class="px-6 py-3 hover:bg-gray-700">
-                            <A href="/admin/users" prop:class="block font-medium">
-                                User Management
-                            </A>
-                        </li>
-                        <li class="px-6 py-3 hover:bg-gray-700">
-                            <A href="/admin/roles" prop:class="block">
-                                Role Management
-                            </A>
-                        </li>
-                        <li class="px-6 py-3 hover:bg-gray-700">
-                            <A href="#" prop:class="block">
-                                Audit Logs
-                            </A>
-                        </li>
-                        <li class="px-6 py-3 hover:bg-gray-700">
-                            <A href="/admin/settings" prop:class="block">
-                                Settings
-                            </A>
-                        </li>
-                    </ul>
-                </nav>
+            <div class="flex-1 overflow-auto">
+                <header class="bg-white shadow p-4 flex justify-between items-center">
+                    <h1 class="text-2xl font-bold mb-4">{move || title.get()}</h1>
+                    <div class="flex items-center">
+                        <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white">
+                            <img src="#" />
+                        </div>
+                        <span class="mr-2 px-4">"Admin"</span>
+                    </div>
+                </header>
             </div>
         }
     }
 
+    #[component]
+    fn ActionBar() -> impl IntoView {
+        view! {
+            <div class="flex justify-between mb-4">
+                <div class="relative">
+                    <input type="text" placeholder="Search users..." class="pl-10 pr-4 py-2 border rounded w-64" />
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="flex gap-2">
+                    <button class="bg-gray-700 text-white px-4 py-2 rounded" disabled>
+                        "Delete User"
+                    </button>
+                    <button class="bg-gray-700 text-white px-4 py-2 rounded" onclick="#">
+                        "Add User"
+                    </button>
+                </div>
+            </div>
+        }
+    }
+
+    #[component]
     fn LoadingSpinner() -> impl IntoView {
         view! {
-            <div class="flex justify-center items-center py-10">
-                <div class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <div class="bg-white rounded-lg shadow px-6 py-12 animate-fade-in">
+                <div class="flex flex-col items-center space-y-4">
+                    <div class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    <p class="text-gray-600 text-sm animate-pulse">"Loading users..."</p>
+                </div>
             </div>
         }
     }
 
     fn DashboardView() -> impl IntoView {
+        let title = use_context::<RwSignal<String>>()
+            .expect("title context should be provided");
+
+        title.set("Dashboard".to_string());
+
         view! { <p>"Dashboard view"</p> }
     }
 
     fn UserManagementView() -> impl IntoView {
         let users = use_context::<Resource<Result<Vec<crate::db::User>, ServerFnError>>>()
             .expect("users context missing");
+        let title = use_context::<RwSignal<String>>()
+            .expect("title context should be provided");
+
+        title.set("User Management".to_string());
         view! {
             <div class="p-4">
-                <h1 class="text-2xl font-bold mb-4">"Users"</h1>
 
                 <Suspense fallback=move || view! { <LoadingSpinner/> }>
                 {move || {
                     users.get().map(|result| view! {
+                        <ActionBar />
                         <div class="bg-white rounded-lg shadow overflow-auto-x">
                             <table class="min-w-full divide-y divide-gray-200">
                                 <thead class="bg-gray-50">
                                     <tr>
+                                        <th class="w-12 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            <input type="checkbox" class="h-4 w-4" />
+                                        </th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             "Name"
                                         </th>
@@ -323,9 +419,24 @@ pub mod app {
                                         Ok(users) => users.into_iter().map(|user| {
                                             view! {
                                                 <tr class="border-t hover:bg-gray-50">
-                                                    <td class="py-2 px-4">{move || format!("{} {}", user.first_name, user.last_name)}</td>
-                                                    <td class="py-2 px-4">{user.username}</td>
-                                                    <td class="py-2 px-4">{user.role_name}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap">
+                                                        <input type="checkbox" class="h-4 w-4" />
+                                                    </td>
+                                                    <td class="py-6 px-4 whitespace-nowrap">
+                                                        <div class="text-sm font-medium text-gray-900">
+                                                            {move || format!("{} {}", user.first_name, user.last_name)}
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap">
+                                                        <div class="text-sm text-gray-500">
+                                                            {user.username}
+                                                        </div>
+                                                    </td>
+                                                    <td class="py-2 px-4">
+                                                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-medium rounded border border-gray-300">
+                                                            {user.role_name}
+                                                        </span>
+                                                    </td>
                                                 </tr>
                                             }.into_any()
                                         })
@@ -349,10 +460,18 @@ pub mod app {
     }
 
     fn RoleManagementView() -> impl IntoView {
+        let title = use_context::<RwSignal<String>>()
+            .expect("title context should be provided");
+
+        title.set("Role Management".to_string());
         view! { <p>"Role managment view"</p> }
     }
 
     fn SettingsView() -> impl IntoView {
+        let title = use_context::<RwSignal<String>>()
+            .expect("title context should be provided");
+
+        title.set("Settings".to_string());
         view! { <p>"Settings view"</p> }
     }
 
