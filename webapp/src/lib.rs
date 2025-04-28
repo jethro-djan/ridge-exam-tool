@@ -11,9 +11,10 @@ pub mod app {
     use leptos_meta::*;
     use leptos_router::{
         StaticSegment, 
-        components::{ParentRoute, Route, Router, Routes, A},
+        components::{ParentRoute, Route, Router, Routes, A, ProtectedParentRoute},
         nested_router::Outlet,
         path,
+        NavigateOptions,
     };
 
     pub async fn get_users() -> Result<Vec<crate::db::User>, ServerFnError> {
@@ -77,22 +78,55 @@ pub mod app {
         }
     }
 
+    #[derive(Copy, Clone)]
+    pub struct AuthContext {
+        pub is_authenticated: RwSignal<bool>,
+    }
+
+    #[component]
+    pub fn AuthProvider(children: Children) -> impl IntoView {
+        let is_authenticated = RwSignal::new(false);
+
+        provide_context(AuthContext {
+            is_authenticated,
+        });
+
+        children()
+    }
+
     #[component]
     pub fn App() -> impl IntoView {
         provide_meta_context();
         view! {
             <Stylesheet id="leptos" href="/pkg/webapp.css" />
-            <Router>
-                <Routes fallback=move || "Not found.">
-                    <Route path=StaticSegment(Page::Login.path()) view=LoginView />
-                    <ParentRoute path=StaticSegment(Page::AdminPanel.path()) view=AdminPanelView>
-                        <Route path=StaticSegment("") view=DashboardView />
-                        <Route path=StaticSegment(Page::Users.path()) view=UserManagementView />
-                        <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView />
-                        <Route path=StaticSegment(Page::Settings.path()) view=SettingsView />
-                    </ParentRoute>
-                </Routes>
-            </Router>
+            <AuthProvider>
+                <Router>
+                    <Routes fallback=move || "Not found.">
+                        <Route 
+                            path=StaticSegment(Page::Login.path()) 
+                            view=move || {
+                                let auth = use_context::<AuthContext>();
+                                view! { <LoginView /> }
+                            }
+                        />
+                        <ProtectedParentRoute 
+                            path=StaticSegment(Page::AdminPanel.path()) 
+                            view=AdminPanelView
+                            condition=move || {
+                                let auth = use_context::<AuthContext>()
+                                    .expect("AuthContext not provided");
+                                Some(auth.is_authenticated.get())
+                            }
+                            redirect_path=move || Page::Login.path()
+                        >
+                            <Route path=StaticSegment("") view=DashboardView />
+                            <Route path=StaticSegment(Page::Users.path()) view=UserManagementView />
+                            <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView />
+                            <Route path=StaticSegment(Page::Settings.path()) view=SettingsView />
+                        </ProtectedParentRoute>
+                    </Routes>
+                </Router>
+            </AuthProvider>
         }
     }
 
@@ -152,20 +186,24 @@ pub mod app {
         let username = RwSignal::new(String::new());
         let password = RwSignal::new(String::new());
         let (error_msg, set_error_msg) = signal(String::new());
+        let login_action = ServerAction::<LoginUser>::new();
 
-        let login_user_request = Action::new(|login_credentials: &(String, String)| {
-            let (username, password) = (
-                login_credentials.0.to_owned(),
-                login_credentials.1.to_owned(),
-            );
-            async move { login_user(username, password).await }
-        });
+        // let login_user_request = Action::new(|login_credentials: &(String, String)| {
+        //     let (username, password) = (
+        //         login_credentials.0.to_owned(),
+        //         login_credentials.1.to_owned(),
+        //     );
+        //     async move { login_user(username, password).await }
+        // });
 
         let navigate = leptos_router::hooks::use_navigate();
 
-        Effect::new(move |_| match login_user_request.value().get() {
+        Effect::new(move |_| match login_action.value().get() {
             Some(Ok(true)) => {
-                navigate("/admin", Default::default());
+                let auth = use_context::<AuthContext>()
+                    .expect("AuthContext not provided");
+                auth.is_authenticated.set(true);
+                navigate("/admin", NavigateOptions { replace: true, ..Default::default() });
             }
             Some(Ok(false)) => {
                 set_error_msg.set(String::from("Invalid credentials"));
@@ -178,14 +216,15 @@ pub mod app {
 
         view! {
             {render_prop()}
-            <form
-                class="space-y-6"
-                on:submit=move |ev| {
-                    ev.prevent_default();
-                    login_user_request.dispatch((username.get(), password.get()));
-                }
+            <ActionForm
+                attr:class="space-y-6"
+                action=login_action
+                // on:submit=move |ev| {
+                //     ev.prevent_default();
+                //     login_user_request.dispatch((username.get(), password.get()));
+                // }
             >
-                <div>
+                <div >
                     <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
                         "Username"
                     </label>
@@ -216,6 +255,7 @@ pub mod app {
                 <div>
                     <button
                         type="submit"
+                        disabled=move || login_action.pending()
                         class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                         prop:value=error_msg
                     >
@@ -223,7 +263,7 @@ pub mod app {
                         "Sign in"
                     </button>
                 </div>
-            </form>
+            </ActionForm>
 
             <div class="flex justify-center mt-6 text-red-700">
                 <label>{error_msg}</label>
@@ -251,10 +291,10 @@ pub mod app {
             |_| async move { get_users().await }
         );
 
-        let title = RwSignal::new(String::from("Dashboard"));
+        let page_title = RwSignal::new(String::from("Dashboard"));
         
         provide_context(users);
-        provide_context(title);
+        provide_context(page_title);
 
         view! {
             <PageLayout>
@@ -263,9 +303,11 @@ pub mod app {
                         <Sidebar />
                         <div class="flex-1 overflow-auto">
                             <TitleBar />
-                            <div class="p-6">
-                                <Outlet />
-                            </div>
+                            <Suspense fallback=move || view! { <LoadingSpinner/> }>
+                                <div class="p-6">
+                                    <Outlet />
+                                </div>
+                            </Suspense>
                         </div>
                     </div>
                 </PageContent>
@@ -318,12 +360,12 @@ pub mod app {
 
     #[component]
     fn TitleBar() -> impl IntoView {
-        let title = use_context::<RwSignal<String>>()
+        let page_title = use_context::<RwSignal<String>>()
             .expect("title context should be provided");
         view! {
             <div class="flex-1 overflow-auto">
                 <header class="bg-white shadow p-4 flex justify-between items-center">
-                    <h1 class="text-2xl font-bold mb-4">{move || title.get()}</h1>
+                    <h1 class="text-2xl font-bold mb-4">{move || page_title.get()}</h1>
                     <div class="flex items-center">
                         <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white">
                             <img src="#" />
@@ -381,6 +423,59 @@ pub mod app {
         view! { <p>"Dashboard view"</p> }
     }
 
+    #[component]
+    fn UserTable(users: Vec<crate::db::User>) -> impl IntoView {
+        view! {
+            <div class="bg-white rounded-lg shadow overflow-auto-x">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="w-12 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <input type="checkbox" class="h-4 w-4" />
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                "Name"
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                "Username"
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                "Role"
+                            </th>
+                        </tr>
+                    </thead>
+
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {users.into_iter().map(|user| {
+                            view! {
+                                <tr class="border-t hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <input type="checkbox" class="h-4 w-4" />
+                                    </td>
+                                    <td class="py-6 px-4 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900">
+                                            {format!("{} {}", user.first_name, user.last_name)}
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm text-gray-500">
+                                            {user.username}
+                                        </div>
+                                    </td>
+                                    <td class="py-2 px-4">
+                                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-medium rounded border border-gray-300">
+                                            {user.role_name}
+                                        </span>
+                                    </td>
+                                </tr>
+                            }}).collect::<Vec<_>>()
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+
     fn UserManagementView() -> impl IntoView {
         let users = use_context::<Resource<Result<Vec<crate::db::User>, ServerFnError>>>()
             .expect("users context missing");
@@ -390,71 +485,53 @@ pub mod app {
         title.set("User Management".to_string());
         view! {
             <div class="p-4">
-
-                <Suspense fallback=move || view! { <LoadingSpinner/> }>
-                {move || {
-                    users.get().map(|result| view! {
-                        <ActionBar />
-                        <div class="bg-white rounded-lg shadow overflow-auto-x">
-                            <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        <th class="w-12 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            <input type="checkbox" class="h-4 w-4" />
-                                        </th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            "Name"
-                                        </th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            "Username"
-                                        </th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            "Role"
-                                        </th>
-                                    </tr>
-                                </thead>
-
-                                <tbody class="bg-white divide-y divide-gray-200">
-                                    {match result {
-                                        Ok(users) => users.into_iter().map(|user| {
-                                            view! {
-                                                <tr class="border-t hover:bg-gray-50">
-                                                    <td class="px-6 py-4 whitespace-nowrap">
-                                                        <input type="checkbox" class="h-4 w-4" />
-                                                    </td>
-                                                    <td class="py-6 px-4 whitespace-nowrap">
-                                                        <div class="text-sm font-medium text-gray-900">
-                                                            {move || format!("{} {}", user.first_name, user.last_name)}
-                                                        </div>
-                                                    </td>
-                                                    <td class="px-6 py-4 whitespace-nowrap">
-                                                        <div class="text-sm text-gray-500">
-                                                            {user.username}
-                                                        </div>
-                                                    </td>
-                                                    <td class="py-2 px-4">
-                                                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-medium rounded border border-gray-300">
-                                                            {user.role_name}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            }.into_any()
-                                        })
-                                        .collect::<Vec<_>>(),
-                                        Err(e) => vec![view! {
-                                            <tr>
-                                                <td colspan="5" class="py-2 px-4 text-red-500">
-                                                    {move || format!("Error loading users: {}", e.to_string())}
-                                                </td>
-                                            </tr>
-                                        }.into_any()]
-                                    }}
-                                </tbody>
-                            </table>
-                        </div>
-                    })
-                }}
+                <ActionBar />
+                <Suspense fallback=move || view! {
+                    <div class="flex justify-center items-center h-64">
+                        <LoadingSpinner prop:size="lg"/>
+                    </div>
+                }>
+                    {move || match users.get() {
+                        None => view! { <div></div> }.into_any(),
+                        Some(Ok(users)) => view! {
+                            <UserTable users=users />
+                        }.into_any(),
+                        Some(Err(e)) => view! {
+                            <ErrorDisplay error=e.to_string() />
+                        }.into_any(),
+                    }}
                 </Suspense>
+            </div>
+        }
+    }
+
+    #[component]
+    pub fn ErrorDisplay(error: String) -> impl IntoView {
+        view! {
+            <div class="flex flex-col items-center justify-center p-8 bg-red-50 rounded-lg">
+                <div class="flex items-center justify-center w-16 h-16 mb-4 bg-red-100 rounded-full">
+                    <svg 
+                        class="w-8 h-8 text-red-500" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                    >
+                        <path 
+                            stroke-linecap="round" 
+                            stroke-linejoin="round" 
+                            stroke-width="2" 
+                            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                        />
+                    </svg>
+                </div>
+                <h3 class="mb-2 text-lg font-medium text-red-800">"Error Occurred"</h3>
+                <p class="text-center text-red-600 max-w-md">{error}</p>
+                <button 
+                    class="px-4 py-2 mt-4 text-sm font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    // on:click=move |_| location.reload()
+                >
+                    "Retry"
+                </button>
             </div>
         }
     }
