@@ -9,6 +9,7 @@ use leptos_router::{
 use reactive_stores::{Store};
 use reactive_graph::traits::{Get as ReactiveGet, Set as ReactiveSet, Read, Update};
 
+#[server(GetUsers, "/api")]
 pub async fn get_users() -> Result<Vec<db::User>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -16,7 +17,8 @@ pub async fn get_users() -> Result<Vec<db::User>, ServerFnError> {
     }
     #[cfg(not(feature = "ssr"))]
     {
-        unreachable!()
+        Err(ServerFnError::ServerError("Server function called on client".to_string()))
+        // unreachable!()
     }
 }
 
@@ -56,31 +58,6 @@ pub async fn verify_session() -> Result<Option<db::UserSession>, ServerFnError> 
         ))
     }
 }
-
-// #[server(LoginUser, "/api/login_user")]
-// pub async fn login_user(username: String, password: String) -> Result<bool, ServerFnError> {
-//     #[cfg(feature = "ssr")]
-//     {
-//         use leptos_actix::extract;
-//         use actix_session::Session;
-
-//         dotenvy::dotenv().ok();
-//         let pool = crate::db::server::connect()
-//             .await
-//             .expect("Failed to create database pool");
-
-//         let session: Session = extract().await?;
-
-//         crate::db::login(&pool, session, username, password).await
-//     }
-
-//     #[cfg(not(feature = "ssr"))]
-//     {
-//         Err(ServerFnError::ServerError(
-//             "Server function called on client".into(),
-//         ))
-//     }
-// }
 
 #[server]
 pub async fn logout_user() -> Result<(), ServerFnError> {
@@ -142,8 +119,6 @@ pub fn App() -> impl IntoView {
     });
     provide_context(app_state.clone());
 
-    leptos::logging::log!("verify_session resource is created");
-
     let verify_session = Resource::new(
         || (), 
         |_| async move { 
@@ -152,81 +127,44 @@ pub fn App() -> impl IntoView {
             leptos::logging::log!("Session verification result: {:?}", result);
             result
         }
-    );
-    // let verify_session = Resource::new(
-    //     || (), 
-    //     |_| async move { 
-    //         match verify_session().await {
-    //             Ok(session) => session,
-    //             Err(e) => {
-    //                 leptos::logging::error!("Session verification failed: {}", e);
-    //                 None
-    //             }
-    //         }
-    //     }
-    // );
-    provide_context(verify_session.clone());
-    leptos::logging::log!("verify_session resource provided");
 
-    leptos::logging::log!("Resource effect is created");
-    Effect::new(move |_| {
-        if let Some(result) = verify_session.get() {
-            match result {
-                Ok(session) => {
-                    app_state.set(AppState {
-                        is_authenticated: session.is_some(),
-                        session,
-                        loading: false,
-                    });
-                    leptos::logging::log!("Session verification successful, loading: {}", app_state.loading().get());
-                },
-                Err(e) => {
-                    leptos::logging::error!("Session verification failed: {}", e);
-                    app_state.set(AppState {
-                        is_authenticated: false,
-                        session: None,
-                        loading: false,
-                    });
-                    leptos::logging::log!("Session verification error, loading: {}", app_state.loading().get());
-                }
+    );
+    provide_context(verify_session.clone());
+
+    
+    Effect::new(move || {
+        leptos::logging::log!("App Effect running - verify_session changed");
+        leptos::logging::log!("verify_session.get() = {:?}", verify_session.get());
+        
+        match verify_session.get() {
+            Some(Ok(session)) => {
+                leptos::logging::log!("Session verified: {:?}", session.is_some());
+                let is_authenticated = session.is_some();
+                
+                app_state.set(AppState {
+                    is_authenticated,
+                    session,
+                    loading: false,
+                });
             }
-        } else {
-            leptos::logging::log!("Session verification still loading...");
+            Some(Err(e)) => {
+                leptos::logging::log!("Session verification error: {:?}", e);
+                app_state.set(AppState {
+                    is_authenticated: false,
+                    session: None,
+                    loading: false,
+                });
+            }
+            None => {
+                leptos::logging::log!("Session loading...");
+                app_state.set(AppState {
+                    is_authenticated: false,
+                    session: None,
+                    loading: true,
+                });
+            }
         }
     });
-    
-    // Effect::new(move |_| {
-    //     if let Some(session) = verify_session.get() {
-    //         app_state.set(AppState {
-    //             is_authenticated: session.is_some(),
-    //             session,
-    //             loading: false,
-    //         });
-    //     }
-    //     leptos::logging::log!("{}", app_state.loading().get());
-    // });
-
-    // Effect::new(move |_| {
-    //     match verify_session.get() {
-    //         Some(session) => {
-    //             leptos::logging::log!("Session loaded: {:?}", session.as_ref().map(|_| "Some session"));
-    //             app_state.set(AppState {
-    //                 is_authenticated: session.is_some(),
-    //                 session,
-    //                 loading: false,
-    //             });
-    //         },
-    //         None => {
-    //             // Resource failed to load or returned an error
-    //             leptos::logging::log!("Session verification failed or errored");
-    //             app_state.set(AppState {
-    //                 is_authenticated: false,
-    //                 session: None,
-    //                 loading: false,
-    //             });
-    //         }
-    //     }
-    // });
 
     view! {
         <Stylesheet id="leptos" href="/pkg/webapp.css" />
@@ -235,55 +173,20 @@ pub fn App() -> impl IntoView {
                 <Route 
                     path=StaticSegment(Page::Login.path()) 
                     view=move || {
-                        // let app_state = expect_context::<Store<AppState>>();
                         view! { <LoginView /> }
                     }
                 />
-               // <ProtectedParentRoute 
-               //      path=StaticSegment(Page::AdminPanel.path()) 
-               //      view=move || view! { <AdminPanelView/> }
-               //      condition=move || {
-               //          let is_authenticated = app_state.is_authenticated();
-               //          let auth_value = ReactiveGet::get(&is_authenticated);
-
-               //          leptos::logging::log!("Auth condition check: {}", auth_value);
-               //          Some(auth_value)
-               //      }
-               //      redirect_path=move || Page::AdminPanel.path() >
-               //      <Route path=StaticSegment("") view=DashboardView />
-               //      <Route path=StaticSegment(Page::Users.path()) view=UserManagementView />
-               //      <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView />
-               //      <Route path=StaticSegment(Page::Settings.path()) view=SettingsView />
-               // </ProtectedParentRoute>
-               <ProtectedParentRoute 
+                <ProtectedParentRoute 
                    path=StaticSegment(Page::AdminPanel.path()) 
                    view=move || view! { <AdminPanelView/> }
-                   condition=move || Some(ReactiveGet::get(&app_state.is_authenticated()))
-                   // condition=move || {
-                   //     let app_state = expect_context::<Store<AppState>>();
-                   //     // let is_authenticated = app_state.is_authenticated();
-                   //     // let auth_value = is_authenticated.get();
-
-                   //     if app_state.loading().get() {
-                   //         return None;
-                   //     } else {
-                   //         return Some(app_state.is_authenticated().get());
-                   //     }
-                   //     // leptos::logging::log!("Auth condition check: {}", auth_value);
-                   //     // let auth = use_context::<AuthContext>()
-                   //     //     .expect("AuthContext not provided");
-                   //     // println!("Auth value: {}", is_authenticated.get());
-                   //     // Some(auth_value)
-                   //     let app_state = expect_context::<Store<AppState>>();
-                   //     leptos::logging::log!("authenticated: {}", app_state.is_authenticated().get());
-                   // }
+                   condition=move || Some(app_state.is_authenticated().get())
                    redirect_path=move || Page::Login.path()
-               >
+                >
                    <Route path=StaticSegment("") view=DashboardView />
                    <Route path=StaticSegment(Page::Users.path()) view=UserManagementView />
                    <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView />
                    <Route path=StaticSegment(Page::Settings.path()) view=SettingsView />
-               </ProtectedParentRoute>
+                </ProtectedParentRoute>
             </Routes>
         </Router>
     }
@@ -342,6 +245,8 @@ where
     F: Fn() -> IV + Send + Sync + 'static,
     IV: IntoView + 'static,
 {
+    // Add this at the start of your LoginForm component
+    leptos::logging::log!("LoginForm component created - ID: {}", std::ptr::addr_of!(render_prop) as usize);
     let username = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
     let (error_msg, set_error_msg) = signal(String::new());
@@ -354,17 +259,17 @@ where
     let navigate = leptos_router::hooks::use_navigate();
 
 
-    Effect::new(move || {
+    Effect::new(move |_| {
+        leptos::logging::log!("Effect created and running!");
+
         if let Some(action_value) = login_action.value().get() {
+            leptos::logging::log!("Login action completed: {:?}", action_value);
             match action_value {
                 Ok(Some(user_session)) => {
-                    // app_state.update(|state| {
-                    //     state.is_authenticated = true;
-                    //     state.session = Some(user_session);
-                    //     state.loading = false;
-                    // });
+                    leptos::logging::log!("Login successful, calling refetch");
                     verify_session.refetch();
-                    // navigate("/admin", NavigateOptions { replace: true, ..Default::default() });
+                    leptos::logging::log!("Refetch called");
+                    // navigate("/admin", NavigateOptions::default());
                 }
                 Ok(None) => {
                     set_error_msg.set(String::from("Invalid credentials"));
@@ -376,31 +281,30 @@ where
         }
     });
 
-    // Effect::new(move |_| match login_action.value().get() {
-    //     Some(Ok(true)) => {
-    //         let auth = use_context::<AuthContext>()
-    //             .expect("AuthContext not provided");
-    //         auth.is_authenticated.set(true);
-    //         navigate("/admin", NavigateOptions { replace: true, ..Default::default() });
-    //     }
-    //     Some(Ok(false)) => {
-    //         set_error_msg.set(String::from("Invalid credentials"));
-    //     }
-    //     Some(Err(e)) => {
-    //         set_error_msg.set(format!("Login error: {}", e));
-    //     }
-    //     _ => {}
-    // });
+    Effect::new(move |_| {
+        // Only navigate after login action succeeded AND session is verified
+        let login_succeeded = login_action.value().get()
+            .map(|result| matches!(result, Ok(Some(_))))
+            .unwrap_or(false);
+        
+        let session_verified = verify_session.get()
+            .map(|result| matches!(result, Ok(Some(_))))
+            .unwrap_or(false);
+        
+        if login_succeeded && session_verified {
+            leptos::logging::log!("Both login and session verification complete - navigating");
+            navigate("/admin", NavigateOptions::default());
+        }
+    });
 
     view! {
         {render_prop()}
         <ActionForm
             attr:class="space-y-6"
             action=login_action
-            // on:submit=move |ev| {
-            //     ev.prevent_default();
-            //     login_user_request.dispatch((username.get(), password.get()));
-            // }
+            on:submit=move |ev| {
+                leptos::logging::log!("Form submitted");
+            }
         >
             <div >
                 <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
@@ -462,6 +366,7 @@ where
 
 #[component]
 fn AdminPanelView() -> impl IntoView {
+    leptos::logging::log!("AdminPage component created!");
     let navigate = leptos_router::hooks::use_navigate();
 
     let users = Resource::new(
