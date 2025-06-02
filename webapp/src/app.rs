@@ -122,12 +122,11 @@ pub fn App() -> impl IntoView {
     let verify_session = Resource::new(
         || (), 
         |_| async move { 
-            leptos::logging::log!("Executing verify_session");
+            leptos::logging::log!("Resource calling verify_session - from client or server?");
             let result = verify_session().await;
             leptos::logging::log!("Session verification result: {:?}", result);
             result
         }
-
     );
     provide_context(verify_session.clone());
 
@@ -140,12 +139,16 @@ pub fn App() -> impl IntoView {
             Some(Ok(session)) => {
                 leptos::logging::log!("Session verified: {:?}", session.is_some());
                 let is_authenticated = session.is_some();
+
+                leptos::logging::log!("About to update app_state - is_authenticated: {}", is_authenticated);
                 
                 app_state.set(AppState {
                     is_authenticated,
                     session,
                     loading: false,
                 });
+                
+                leptos::logging::log!("app_state updated - new auth state: {}", app_state.is_authenticated().get());
             }
             Some(Err(e)) => {
                 leptos::logging::log!("Session verification error: {:?}", e);
@@ -173,13 +176,27 @@ pub fn App() -> impl IntoView {
                 <Route 
                     path=StaticSegment(Page::Login.path()) 
                     view=move || {
-                        view! { <LoginView /> }
+                        view! { 
+                            <LoginView />
+                        }
                     }
                 />
                 <ProtectedParentRoute 
                    path=StaticSegment(Page::AdminPanel.path()) 
                    view=move || view! { <AdminPanelView/> }
-                   condition=move || Some(app_state.is_authenticated().get())
+                   condition=move || {
+                       let auth_state = app_state.is_authenticated().get();
+                       let loading = app_state.loading().get();
+
+                       leptos::logging::log!("ProtectedRoute condition - auth: {}, loading: {}", auth_state, loading);
+                        
+                       if loading {
+                           None
+                           // Some(true)
+                       } else {
+                           Some(auth_state)
+                       }
+                   }
                    redirect_path=move || Page::Login.path()
                 >
                    <Route path=StaticSegment("") view=DashboardView />
