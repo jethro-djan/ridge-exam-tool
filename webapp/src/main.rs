@@ -84,10 +84,10 @@ async fn main() -> std::io::Result<()> {
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
                 .cookie_name(String::from("webapp_session"))
-                .cookie_http_only(true)
+                // .cookie_http_only(true)
                 .cookie_secure(false) 
-                .cookie_same_site(cookie::SameSite::Lax)
-                .cookie_path("/".to_string()) 
+                // .cookie_same_site(cookie::SameSite::Lax)
+                // .cookie_path("/".to_string()) 
                 .session_lifecycle(
                     PersistentSession::default()
                         .session_ttl(cookie::time::Duration::days(30))

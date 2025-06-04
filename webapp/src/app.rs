@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos_meta::*;
 use leptos_router::{
     StaticSegment, 
-    components::{Route, Router, Routes, ProtectedParentRoute},
+    components::{Route, Router, Routes, ProtectedParentRoute, ParentRoute, Redirect},
     nested_router::Outlet,
     NavigateOptions,
 };
@@ -85,125 +85,156 @@ pub async fn logout_user() -> Result<(), ServerFnError> {
     }
 }
 
-#[derive(Copy, Clone)]
-pub struct AuthContext {
-    pub is_authenticated: RwSignal<bool>,
+#[derive(Clone, Debug, Default)]
+pub struct AuthState {
+    user: Option<db::UserSession>,
+    loading: bool,
 }
 
-#[derive(Clone, Debug, Default, Store, PartialEq)]
-pub struct AppState {
-    pub is_authenticated: bool,
-    pub session: Option<db::UserSession>,
-    pub loading: bool,
-}
-
-#[component]
-pub fn AuthProvider(children: Children) -> impl IntoView {
-    let is_authenticated = RwSignal::new(false);
-
-    provide_context(AuthContext {
-        is_authenticated,
-    });
-
-    children()
-}
+// #[derive(Clone, Debug, Default, Store, PartialEq)]
+// 1pub struct AppState {
+// 1    pub is_authenticated: bool,
+// 1    pub session: Option<db::UserSession>,
+// 1    pub loading: bool,
+// 1}
 
 #[component]
 pub fn App() -> impl IntoView {
     provide_meta_context();
 
-    let app_state = Store::new(AppState {
-        is_authenticated: false,
-        session: None,
+    // let app_state = Store::new(AppState {
+    //     is_authenticated: false,
+    //     session: None,
+    //     loading: true,
+    // });
+
+    // provide_context(app_state.clone());
+    let auth_state = RwSignal::new(AuthState {
+        user: None,
         loading: true,
     });
-    provide_context(app_state.clone());
+    provide_context(auth_state.clone());
 
     let verify_session = Resource::new(
         || (), 
         |_| async move { 
-            leptos::logging::log!("Resource calling verify_session - from client or server?");
-            let result = verify_session().await;
-            leptos::logging::log!("Session verification result: {:?}", result);
-            result
+            match verify_session().await {
+                Ok(Some(user)) => Some(user),
+                _ => None,
+            }
+            // leptos::logging::log!("Resource calling verify_session - from client or server?");
+            // let result = verify_session().await;
+            // leptos::logging::log!("Session verification result: {:?}", result);
+            // result
         }
     );
     provide_context(verify_session.clone());
 
-    
-    Effect::new(move || {
-        leptos::logging::log!("App Effect running - verify_session changed");
-        leptos::logging::log!("verify_session.get() = {:?}", verify_session.get());
-        
-        match verify_session.get() {
-            Some(Ok(session)) => {
-                leptos::logging::log!("Session verified: {:?}", session.is_some());
-                let is_authenticated = session.is_some();
-
-                leptos::logging::log!("About to update app_state - is_authenticated: {}", is_authenticated);
-                
-                app_state.set(AppState {
-                    is_authenticated,
-                    session,
-                    loading: false,
-                });
-                
-                leptos::logging::log!("app_state updated - new auth state: {}", app_state.is_authenticated().get());
-            }
-            Some(Err(e)) => {
-                leptos::logging::log!("Session verification error: {:?}", e);
-                app_state.set(AppState {
-                    is_authenticated: false,
-                    session: None,
-                    loading: false,
-                });
-            }
-            None => {
-                leptos::logging::log!("Session loading...");
-                app_state.set(AppState {
-                    is_authenticated: false,
-                    session: None,
-                    loading: true,
-                });
-            }
+    Effect::new(move |_| {
+        if let Some(user) = verify_session.get() {
+            auth_state.set(AuthState {
+                user,
+                loading: false,
+            })
         }
     });
+
+    
+    // Effect::new(move || {
+    //     leptos::logging::log!("App Effect running - verify_session changed");
+    //     leptos::logging::log!("verify_session.get() = {:?}", verify_session.get());
+    //     
+    //     match verify_session.get() {
+    //         Some(Ok(session)) => {
+    //             leptos::logging::log!("Session verified: {:?}", session.is_some());
+    //             let is_authenticated = session.is_some();
+
+    //             leptos::logging::log!("About to update app_state - is_authenticated: {}", is_authenticated);
+    //             
+    //             app_state.set(AppState {
+    //                 is_authenticated,
+    //                 session,
+    //                 loading: false,
+    //             });
+    //             
+    //             leptos::logging::log!("app_state updated - new auth state: {}", app_state.is_authenticated().get());
+    //         }
+    //         Some(Err(e)) => {
+    //             leptos::logging::log!("Session verification error: {:?}", e);
+    //             app_state.set(AppState {
+    //                 is_authenticated: false,
+    //                 session: None,
+    //                 loading: false,
+    //             });
+    //         }
+    //         None => {
+    //             leptos::logging::log!("Session loading...");
+    //             app_state.set(AppState {
+    //                 is_authenticated: false,
+    //                 session: None,
+    //                 loading: true,
+    //             });
+    //         }
+    //     }
+    // });
 
     view! {
         <Stylesheet id="leptos" href="/pkg/webapp.css" />
         <Router>
             <Routes fallback=move || "Not found.">
                 <Route 
-                    path=StaticSegment(Page::Login.path()) 
+                    path=StaticSegment("/auth")
                     view=move || {
-                        view! { 
-                            <LoginView />
+                        view! {
+                            <Suspense fallback=LoadingSpinner>
+                                <Show 
+                                    when=move || { auth_state.get().user.is_some() && !auth_state.get().loading }
+                                    fallback=move || view! { <Redirect path=Page::Login.path() /> }
+                                >
+                                    <Redirect path=Page::AdminPanel.path() />
+                                </Show>
+                            </Suspense>
                         }
                     }
                 />
-                <ProtectedParentRoute 
-                   path=StaticSegment(Page::AdminPanel.path()) 
-                   view=move || view! { <AdminPanelView/> }
-                   condition=move || {
-                       let auth_state = app_state.is_authenticated().get();
-                       let loading = app_state.loading().get();
-
-                       leptos::logging::log!("ProtectedRoute condition - auth: {}, loading: {}", auth_state, loading);
-                        
-                       if loading {
-                           None
-                           // Some(true)
-                       } else {
-                           Some(auth_state)
-                       }
-                   }
-                   redirect_path=move || Page::Login.path()
+                <Route 
+                    path=StaticSegment(Page::Login.path()) 
+                    view=move || view! { <LoginView /> }
+                />
+                <ParentRoute 
+                    path=StaticSegment(Page::AdminPanel.path()) 
+                    view=move || view! { <AdminPanelView/> }
                 >
-                   <Route path=StaticSegment("") view=DashboardView />
-                   <Route path=StaticSegment(Page::Users.path()) view=UserManagementView />
-                   <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView />
-                   <Route path=StaticSegment(Page::Settings.path()) view=SettingsView />
-                </ProtectedParentRoute>
+                    <Route path=StaticSegment("") view=DashboardView />
+                    <Route path=StaticSegment(Page::Users.path()) view=UserManagementView />
+                    <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView />
+                    <Route path=StaticSegment(Page::Settings.path()) view=SettingsView />
+                </ParentRoute>
+                // <ProtectedParentRoute 
+                //    path=StaticSegment(Page::AdminPanel.path()) 
+                //    view=move || view! { <AdminPanelView/> }
+                //    condition=move || {
+                //        let auth_state = app_state.is_authenticated().get();
+                //        let loading = app_state.loading().get();
+
+                //        leptos::logging::log!("ProtectedRoute condition - auth: {}, loading: {}", auth_state, loading);
+                //         
+                //        // if loading {
+                //        //     None
+                //        //     // Some(true)
+                //        // } else {
+                //        //     Some(auth_state)
+                //        // }
+                //        Some(auth_state)
+                //    }
+                //    redirect_path=move || Page::Login.path()
+                //     fallback=move || view! { <LoadingSpinner/> }
+                // >
+                //    <Route path=StaticSegment("") view=DashboardView />
+                //    <Route path=StaticSegment(Page::Users.path()) view=UserManagementView />
+                //    <Route path=StaticSegment(Page::Roles.path()) view=RoleManagementView />
+                //    <Route path=StaticSegment(Page::Settings.path()) view=SettingsView />
+                // </ProtectedParentRoute>
             </Routes>
         </Router>
     }
@@ -262,16 +293,18 @@ where
     F: Fn() -> IV + Send + Sync + 'static,
     IV: IntoView + 'static,
 {
-    // Add this at the start of your LoginForm component
     leptos::logging::log!("LoginForm component created - ID: {}", std::ptr::addr_of!(render_prop) as usize);
     let username = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
     let (error_msg, set_error_msg) = signal(String::new());
 
     let login_action = ServerAction::<LoginUser>::new();
-    let verify_session = use_context::<Resource<Result<Option<db::UserSession>, ServerFnError>>>() 
+    // let verify_session = use_context::<Resource<Result<<Option<db::UserSession>>,ServerFnError>>() 
+    //     .expect("verify_session resource should be provided");
+    let verify_session = use_context::<Resource<Option<db::UserSession>>>() 
         .expect("verify_session resource should be provided");
-    let app_state = use_context::<Store<AppState>>().expect("AppState should be provided");
+    // let auth_state = use_context::<RwSignal<AuthState>>().expect("AppState should be provided");
+    //let app_state = use_context::<Store<AppState>>().expect("AppState should be provided");
 
     let navigate = leptos_router::hooks::use_navigate();
 
@@ -299,14 +332,17 @@ where
     });
 
     Effect::new(move |_| {
-        // Only navigate after login action succeeded AND session is verified
         let login_succeeded = login_action.value().get()
             .map(|result| matches!(result, Ok(Some(_))))
             .unwrap_or(false);
-        
-        let session_verified = verify_session.get()
-            .map(|result| matches!(result, Ok(Some(_))))
-            .unwrap_or(false);
+
+       let session_verified = verify_session.get() 
+           .map(|user_option| user_option.is_some()) 
+           .unwrap_or(false); 
+
+        // let session_verified = verify_session.get()
+        //     .map(|result| matches!(result, Ok(Some(_))))
+        //     .unwrap_or(false);
         
         if login_succeeded && session_verified {
             leptos::logging::log!("Both login and session verification complete - navigating");
@@ -319,9 +355,6 @@ where
         <ActionForm
             attr:class="space-y-6"
             action=login_action
-            on:submit=move |ev| {
-                leptos::logging::log!("Form submitted");
-            }
         >
             <div >
                 <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
@@ -381,10 +414,29 @@ where
     }
 }
 
+
+#[component]
+fn AuthGuard(children: ChildrenFn) -> impl IntoView {
+    let auth_state = use_context::<RwSignal<AuthState>>()
+        .expect("AuthState should be provided");
+    
+    view! {
+        <Suspense fallback=move || view! { <LoadingSpinner/> }>
+            <Show 
+                when=move || auth_state.get().user.is_some() && !auth_state.get().loading
+                fallback=move || view! { <Redirect path=Page::Login.path() /> }
+            >
+                {children()}
+            </Show>
+        </Suspense>
+    }
+}
+
+
 #[component]
 fn AdminPanelView() -> impl IntoView {
     leptos::logging::log!("AdminPage component created!");
-    let navigate = leptos_router::hooks::use_navigate();
+    // let navigate = leptos_router::hooks::use_navigate();
 
     let users = Resource::new(
         || (), 
@@ -399,17 +451,19 @@ fn AdminPanelView() -> impl IntoView {
     view! {
         <PageLayout>
             <PageContent>
-                <div class="flex h-screen">
-                    <Sidebar />
-                    <div class="flex-1 overflow-auto">
-                        <TitleBar />
-                        <Suspense fallback=move || view! { <LoadingSpinner/> }>
-                            <div class="p-6">
-                                <Outlet />
-                            </div>
-                        </Suspense>
+                <AuthGuard>
+                    <div class="flex h-screen">
+                        <Sidebar />
+                        <div class="flex-1 overflow-auto">
+                            <TitleBar />
+                            <Suspense fallback=move || view! { <LoadingSpinner/> }>
+                                <div class="p-6">
+                                    <Outlet />
+                                </div>
+                            </Suspense>
+                        </div>
                     </div>
-                </div>
+                </AuthGuard>
             </PageContent>
         </PageLayout>
     }
@@ -1031,30 +1085,6 @@ pub mod db {
             .await
             .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
 
-            // let user = sqlx::queryas::<, User>(
-            //     r#"
-            //     SELECT 
-            //         u.id, 
-            //         u.username, 
-            //         u.password_hash, 
-            //         u.first_name, 
-            //         u.last_name, 
-            //         u.email, 
-            //         u.role_id, 
-            //         r.name as "role_name", 
-            //         u.is_active, 
-            //         u.created_at, 
-            //         u.last_updated
-            //     FROM users u
-            //     LEFT JOIN roles r ON u.role_id = r.id
-            //     WHERE u.username = $1
-            //     "#,
-            // )
-            // .bind(&username)
-            // .fetch_optional(pool)
-            // .await
-            // .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
-            // .map_err(|e| ServerFnError::ServerError(e.to_string()))?;
             let Some(user) = user else {
                 log::warn!("Login attempt for non-existent user: {}", username);
                 return Ok(None);
@@ -1119,86 +1149,6 @@ pub mod db {
             }
             Ok(Some(user_session))
         }
-
-        // #[cfg(feature = "ssr")]
-        // pub async fn login(
-        //     pool: &PgPool,
-        //     session: Session,
-        //     username: String,
-        //     password: String,
-        // ) -> Result<bool, ServerFnError> {
-        //     let user = sqlx::query_as::<_, User>(
-        //         r#"
-        //         SELECT 
-        //             u.id, 
-        //             u.username, 
-        //             u.password_hash, 
-        //             u.first_name, 
-        //             u.last_name, 
-        //             u.email, 
-        //             u.role_id, 
-        //             r.name as "role_name", 
-        //             u.is_active, 
-        //             u.created_at, 
-        //             u.last_updated
-        //         FROM users u
-        //         LEFT JOIN roles r ON u.role_id = r.id
-        //         WHERE u.username = $1
-        //         "#,
-        //     )
-        //     .bind(&username)
-        //     .fetch_optional(pool)
-        //     .await
-        //     .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
-
-        //     match user {
-        //         Some(user) => {
-        //             if !user.is_active {
-        //                 log::warn!("Login attempt for inactive user: {}", username);
-        //                 return Ok(false);
-        //             }
-
-        //             let parsed_hash = PasswordHash::new(&user.password_hash)
-        //                 .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
-
-        //             let argon2 = Argon2::default();
-        //             let is_valid = argon2
-        //                 .verify_password(password.as_bytes(), &parsed_hash)
-        //                 .is_ok();
-
-        //             if is_valid {
-        //                 let session_id = Uuid::new_v4().to_string();
-
-        //                 crate::db::server::create_user_session(user.id, session_id.clone(), pool)
-        //                     .await
-        //                     .expect("Failed to create a user session");
-
-        //                 let user_session = crate::db::UserSession {
-        //                     user_id: user.id,
-        //                     username: user.username.clone(),
-        //                     session_id: session_id.clone(),
-        //                     role_id: user.role_id,
-        //                     role_name: user.role_name.clone(),
-        //                     first_name: user.first_name.clone(),
-        //                     last_name: user.last_name.clone(),
-        //                 };
-
-        //                 session
-        //                     .insert("user_session", user_session)
-        //                     .map_err(|e| ServerFnError::<Error>::ServerError(e.to_string()))?;
-
-        //                 Ok(true)
-        //             } else {
-        //                 log::warn!("Invalid password for user: {}", username);
-        //                 Ok(false)
-        //             }
-        //         }
-        //         None => {
-        //             log::warn!("Login attempt for non-existent user: {}", username);
-        //             Ok(false)
-        //         }
-        //     }
-        // }
 
         pub async fn logout(pool: &PgPool, session: Session) -> Result<(), ServerFnError> {
             if let Ok(Some(user_session)) = session
